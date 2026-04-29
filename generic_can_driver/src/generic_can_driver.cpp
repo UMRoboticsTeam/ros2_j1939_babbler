@@ -49,8 +49,6 @@ LNI::CallbackReturn GenericCanDriver::on_configure(const rlc::State & state)
   can_interface_ = this->declare_parameter<std::string>("can_interface", "can0");
   sub_topic_can_ = this->declare_parameter<std::string>("can_sub_topic", "");
   pub_topic_can_ = this->declare_parameter<std::string>("pub_topic_can", "");
-  search_queue_ = this->declare_parameter<int>("search_queue", 0);
-  use_full_dbc_ = this->declare_parameter<bool>("use_full_dbc", false);
   
   device_ID_str_ = std::to_string(static_cast<int>(device_ID_));
 
@@ -65,14 +63,6 @@ LNI::CallbackReturn GenericCanDriver::on_configure(const rlc::State & state)
   // setup dbc database - brings in j1939 standard
   this->setupDatabase();
   RCLCPP_INFO(this->get_logger(), "Setup DBC Database");
-
-  // find IDs present in the CAN data stream...
-  while(!this->database_decimated_ && !this->use_full_dbc_)
-  {
-    // ... and then decimate the dbc database to only contain messages seen in CAN data stream
-    rxSearchIDs();
-    RCLCPP_INFO(this->get_logger(), "Decimated DBC Database");
-  }
   
   // automatically configure publishers
   this->configurePublishers();
@@ -127,61 +117,6 @@ LNI::CallbackReturn GenericCanDriver::on_shutdown(const rlc::State & state)
 // END ROS2 LIFECYCLE MANAGEMENT //
 
 // BGN CANUSB COMMS FUNCTIONS //
-void GenericCanDriver::rxSearchIDs()
-{
-  // setup a direct connection to the CAN line (since pub/sub stuff would still have to activate)
-  std::unique_ptr<ros2_j1939::CanDriver> rx_can = std::make_unique<ros2_j1939::CanDriver>();
-  rx_can->setup_connection(this->can_interface_.c_str());
-  
-  // loop over the amount of messages specified in the search_queue_ param 
-  while(this->message_count_ < this->search_queue_)
-  {
-    // grab the CAN ID of the current message
-    uint32_t incoming_ID = rx_can->receive().can_id;
-
-    // make sure it's the correct source address (should prob just add a filter at the socket level)
-    if((device_ID_ == (incoming_ID & 0x000000FFu)))
-    {
-      // add to found_ids_ map, updating the message count or creating a key if not already present
-      this->found_ids_[incoming_ID & 0x00FFFF00u]++;
-    }
-    this->message_count_++;
-  }
-
-  // close the direct socket can connection
-  rx_can->close_connection();
-
-  // create a copy to iterate over
-  const std::map<uint32_t, NewEagle::DbcMessage> dbc_id_msg_map_copy = this->dbc_id_msg_map_; 
-  for (auto [key, value] : dbc_id_msg_map_copy)
-  {
-    // if we did not see the key in any of the incoming CAN frames
-    if (this->found_ids_.count(key) == 0)
-    {
-      // get the name of the message
-      std::string message_name = this->dbc_id_msg_map_[key].GetName();
-      // RCLCPP_INFO(this->get_logger(), "GETNAME: %s", message_name.c_str());
-
-      // use this name as the key to delete it from the dbc_name_msg_map_ 
-      // (this is used to generate publishers later on)
-      this->dbc_name_msg_map_.erase(message_name);
-      
-      // then delete it from the id map
-      this->dbc_id_msg_map_.erase(key);
-    }
-    else
-    {}
-  }
-  RCLCPP_INFO(this->get_logger(), "Found %ld unique IDs on CAN interface", dbc_id_msg_map_.size());
-  this->database_decimated_ = true;
-  
-  // print found IDs to user
-  for(auto [key, value] : this->dbc_id_msg_map_)
-  {
-    RCLCPP_INFO(this->get_logger(), "REMAINING Ids | KEY: %ld VALUE: %s", key, value.GetName().c_str());
-  }
-}
-
 void GenericCanDriver::rxFrame(const can_msgs::msg::Frame::SharedPtr MSG)
 {
   // if message is not a request, error, and matches device ID
