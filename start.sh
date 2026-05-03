@@ -1,0 +1,1 @@
+ros2 run generic_can_driver generic_can_driver_exe --ros-args --log-level debug -p dbw_dbc_file:=/workspace/UMRT/ros-dev/ros2_j1939_babbler/ros2_j1939_babbler_msgs/kuebler.dbc -p frame_id:=body -p device_ID:=0 -p sensor_name:=M -p can_interface:=vcan0 -p can_sub_topic:=/from_can_bus -p pub_topic_can:=/to_can_bus

@@ -1,0 +1,9 @@
+std_msgs/Header header
+uint8 src_addr
+
+uint32 pgnofrequstedinformation
+
+uint8 lengthofdataforthereportedpgn
+
+uint32 shrtnameofactualreportingdevice
+

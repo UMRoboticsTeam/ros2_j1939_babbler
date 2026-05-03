@@ -1,0 +1,19 @@
+std_msgs/Header header
+uint8 src_addr
+
+uint16 encodersetupa_operatingparameter
+
+uint32 encodersetupb_mur
+
+uint32 encodersetupc_tmr
+
+uint32 encodersetupd_sensorcycletime
+
+uint8 encodersetupe_canbustermination
+
+uint32 encodersetupg_sensorpresetvalue
+
+uint8 encodersetuph_sensorpresetenable
+
+uint8 encodersetupi_baudrate
+

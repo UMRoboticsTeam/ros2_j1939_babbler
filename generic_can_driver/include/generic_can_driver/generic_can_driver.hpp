@@ -24,7 +24,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
-#include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 #include "can_msgs/msg/frame.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
@@ -37,53 +36,25 @@
 #include "sensor_msgs/msg/joy.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "sensor_msgs/msg/temperature.hpp"
-#include "lifecycle_msgs/msg/state.hpp"
-
-#include "j1939_msgs/msg/can_data.hpp"
 
 #include "can_dbc_parser/Dbc.hpp"
 #include "can_dbc_parser/DbcBuilder.hpp"
 #include "can_dbc_parser/DbcMessage.hpp"
 #include "can_dbc_parser/DbcSignal.hpp"
 
+#include <ros_babel_fish/babel_fish.hpp>
+
 using namespace std::chrono_literals;
-using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
-namespace rlc = rclcpp_lifecycle;
 
 namespace ros2_j1939
 {
 
-class GenericCanDriver : public rlc::LifecycleNode
+    class GenericCanDriver : public rclcpp::Node
 {
 public:
   explicit GenericCanDriver(const rclcpp::NodeOptions & OPTIONS);
 
   ~GenericCanDriver();
-
-  /**
-   * @brief Configures the driver. Sets up dbc database, configures publishers.
-  */
-  LNI::CallbackReturn on_configure(const rlc::State & state);
-
-  /**
-   * @brief Activates the driver. Activates publishers.
-  */
-  LNI::CallbackReturn on_activate(const rlc::State & state);
-
-  /**
-   * @brief Deactivates the driver. Deactivates publishers.
-  */
-  LNI::CallbackReturn on_deactivate(const rlc::State & state);
-
-  /**
-   * @brief Performs Cleanup on the driver node. Resets to "as-new" state
-  */
-  LNI::CallbackReturn on_cleanup(const rlc::State & state);
-
-  /**
-   * @brief Shutsdown the driver.
-  */
-  LNI::CallbackReturn on_shutdown(const rlc::State & state);
 
   /**
    * @brief Parses incoming CAN frames.
@@ -98,7 +69,7 @@ public:
    * 
    * 5. Publishes that message on the message topic
    */
-  void rxFrame(const can_msgs::msg::Frame::SharedPtr MSG);
+  void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
 
   // DATABASE MANAGEMENT FUNCTIONS //
   /**
@@ -159,8 +130,8 @@ public:
   NewEagle::Dbc dbw_dbc_db_;   // new eagle dbc database
   std::map<uint32_t , NewEagle::DbcMessage> dbc_id_msg_map_;
   std::map<std::string , NewEagle::DbcMessage> dbc_name_msg_map_;
-  std::map<std::string, std::shared_ptr<rlc::LifecyclePublisher<
-    j1939_msgs::msg::CanData>>> publishers_;
+  ros_babel_fish::BabelFish::UniquePtr fish_;
+  std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_;
   rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr sub_can_;
 };
 
