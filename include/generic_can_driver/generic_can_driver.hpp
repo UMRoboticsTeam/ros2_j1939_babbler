@@ -56,6 +56,8 @@ public:
 
   ~GenericCanDriver();
 
+private:
+
   /**
    * @brief Parses incoming CAN frames.
    * 
@@ -83,19 +85,11 @@ public:
    * @brief Checks the messages in the DBC and creates a publisher for each one
    * 
    * The publishers are of type "j1939_msgs::msg::CanData" with a topic name folling a
-   * "sensor_name/key_message" pattern
+   * "sensor_name/key_message" pattern TODO: Docs
+   *
+   * @param msg_topic_prefix prefix to apply before message topics
    */
-  void configurePublishers();
-
-  /**
-   * @brief Goes through the configured publishers and activates them
-   */
-  void activatePublishers();
-
-  /**
-   * @brief Goes through the configured publishers and activates them
-   */
-  void deactivatePublishers();
+  void configurePublishers(const std::string& msg_topic_prefix);
 
   /**
    * @brief functions that takes list of full addresses (such as 0x0CEEFFA1) as defined in params
@@ -116,8 +110,14 @@ public:
     std::array<uint8_t, 8UL> &data_out
   );
 
+  /**
+  * @brief check if an incoming message passes the message filters
+  */
+  bool filter(const uint32_t id) const;
+
   // params
   std::string dbw_dbc_file_;  // the messages definition (such as J1939 standard)
+  std::string msg_package_;   // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
   std::string frame_id_;      // used on the published messages - usually just the location of the sensor on your robot
   std::string sensor_name_;   // name of your sensor / device (e.g. engine ECU)
   uint8_t device_ID_;         // j1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
@@ -126,6 +126,8 @@ public:
                               // if true, will set up publishers for EVERY message in the provided dbc
   std::string sub_topic_can_; // subscribe to the topic socket_can is publishing from the CAN line
   std::string pub_topic_can_; // publish to the topic socket_can is sending to the CAN line
+  std::vector<int64_t> msg_filter_ids_; // list of ids messages must match (within a mask) to be processed
+  std::vector<int64_t> msg_filter_masks_; // parallel list of masks to apply to the filter ids
 
   NewEagle::Dbc dbw_dbc_db_;   // new eagle dbc database
   std::map<uint32_t , NewEagle::DbcMessage> dbc_id_msg_map_;

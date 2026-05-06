@@ -22,9 +22,11 @@
 #include <string>
 #include <regex>
 #include <variant>
+#include <sstream>
 
-constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FF;
+constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t PFPS_MASK = 0x00FFFF00u; // Note doesn't include data page, NewEagle limitation?
+constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
 
 namespace {
     enum class IntegerLengths {
@@ -47,14 +49,27 @@ GenericCanDriver::GenericCanDriver(const rclcpp::NodeOptions & OPTIONS)
     RCLCPP_INFO(this->get_logger(), "Starting Generic Can Driver...");
 
     dbw_dbc_file_ = this->declare_parameter<std::string>("dbw_dbc_file", "");
+    msg_package_ = this->declare_parameter<std::string>("msg_package", "");
     frame_id_ = this->declare_parameter<std::string>("frame_id", "");
     sensor_name_ = this->declare_parameter<std::string>("sensor_name", "");
     device_ID_ = this->declare_parameter<uint8_t>("device_ID", 0);
     can_interface_ = this->declare_parameter<std::string>("can_interface", "can0");
     sub_topic_can_ = this->declare_parameter<std::string>("can_sub_topic", "");
     pub_topic_can_ = this->declare_parameter<std::string>("pub_topic_can", "");
+    auto msg_filter_range = rcl_interfaces::msg::ParameterDescriptor{};
+    msg_filter_range.integer_range = {rcl_interfaces::msg::IntegerRange().set__from_value(0).set__to_value(MAX_CAN_ID)};
+    msg_filter_ids_ = this->declare_parameter<std::vector<int64_t>>("msg_filter_ids", {0}, msg_filter_range); // TODO: Explain somewhere that default is all-pass
+    msg_filter_masks_ = this->declare_parameter<std::vector<int64_t>>("msg_filter_masks", {0}, msg_filter_range);
 
-    device_ID_str_ = std::to_string(static_cast<int>(device_ID_));
+    auto msg_topic_prefix = this->declare_parameter<std::string>("msg_topic_prefix", "");
+
+    if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
+        throw std::invalid_argument((
+            std::ostringstream{} << "Message filter must have same number of IDs and masks, found " << msg_filter_ids_.size()
+            << " ids and " << msg_filter_masks_.size() << " masks").str());
+    }
+
+    device_ID_str_ = std::to_string(device_ID_);
     fish_ = ros_babel_fish::BabelFish::make_unique();
 
     // printing to user
@@ -70,12 +85,12 @@ GenericCanDriver::GenericCanDriver(const rclcpp::NodeOptions & OPTIONS)
     RCLCPP_INFO(this->get_logger(), "Setup DBC database!");
 
     // automatically configure publishers
-    this->configurePublishers();
+    this->configurePublishers(msg_topic_prefix);
     RCLCPP_INFO(this->get_logger(), "Setup publishers!");
 
     // setup subscriber, bind rxFrame
     this->sub_can_ = this->create_subscription<can_msgs::msg::Frame>(
-            this->sub_topic_can_, 500, [this](const can_msgs::msg::Frame::SharedPtr& msg) { rxFrame(std::forward<decltype(msg)>(msg)); });
+            this->sub_topic_can_, 500, [this](const can_msgs::msg::Frame::SharedPtr msg) { rxFrame(std::forward<decltype(msg)>(msg)); });
 
     RCLCPP_DEBUG(this->get_logger(), "Generic Can Driver configured!");
 }
@@ -87,7 +102,7 @@ void GenericCanDriver::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG)
 {
   RCLCPP_DEBUG(this->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", MSG->is_rtr, MSG->is_error, MSG->id, MSG->id & 0x000000FFu);
   // if message is not a request, error, and matches device ID
-  if(!MSG->is_rtr && !MSG->is_error && (device_ID_ == (MSG->id & 0x000000FFu)))
+  if(!MSG->is_rtr && !MSG->is_error && (device_ID_ == (MSG->id & 0x000000FFu) && filter(MSG->id)))
   {
     // local const to store incoming message
     const can_msgs::msg::Frame::SharedPtr incoming_MSG = MSG;
@@ -103,7 +118,7 @@ void GenericCanDriver::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG)
 
       // then create a local ros2 message
       // not really sure why we create the shared_ptr and reference the object instead of stack-allocating, but this is what all the examples do
-      ros_babel_fish::CompoundMessage::SharedPtr can_data_ptr  = fish_->create_message_shared("ros2_j1939_babbler_msgs/msg/"+dbc_message_name_to_ros(message.GetName()));
+      ros_babel_fish::CompoundMessage::SharedPtr can_data_ptr  = fish_->create_message_shared(msg_package_ + "/msg/" + dbc_message_name_to_ros(message.GetName()));
       ros_babel_fish::CompoundMessage& can_data = *can_data_ptr;
 
       // populate the local ros2 message header, frame, and message name
@@ -153,7 +168,8 @@ void GenericCanDriver::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG)
         }
       }
 
-      // Note that we filter by messages in the DBC, so if the message isn't in then we ignore and let others handle
+      // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the
+      //    message isn't in there we ignore and let others endpoints handle
 
       // publish finalized message
       publishers_[dbc_message_name_to_ros(message.GetName())]->publish(can_data);
@@ -179,21 +195,26 @@ void GenericCanDriver::setupDatabase()
   }
 }
 
-void GenericCanDriver::configurePublishers()
+void GenericCanDriver::configurePublishers(const std::string& msg_topic_prefix)
 {
   // iterate over the dbc to spawn an equal amount of publishers
   for (auto [key_message, value_message] : dbc_name_msg_map_)
   {
-    RCLCPP_DEBUG(this->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
-    std::string msg_name = "ros2_j1939_babbler_msgs/msg/"+dbc_message_name_to_ros(key_message);
-    RCLCPP_DEBUG(this->get_logger(), "Attempting to load '%s'", msg_name.c_str());
-    try {
+      std::string msg_name = (std::ostringstream{} << msg_package_ << "/msg/" << dbc_message_name_to_ros(key_message)).str();
+      RCLCPP_DEBUG(this->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
+      RCLCPP_DEBUG(this->get_logger(), "Attempting to load '%s'", msg_name.c_str());
+      try {
         // There is a missing @throws marker in the documentation for ros_babel_fish:::BabelFish::create_publisher, but it
         //      raises BabbleFishException if the type cannot be found
-        publishers_[key_message] = this->fish_->create_publisher(*this, sensor_name_ + "/" + key_message, "ros2_j1939_babbler_msgs/msg/"+dbc_message_name_to_ros(key_message), 20, rclcpp::PublisherOptions());
+        std::string topic_name =  (std::ostringstream{} << msg_topic_prefix << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/") << sensor_name_  << key_message).str();
+        publishers_[key_message] = this->fish_->create_publisher(*this, topic_name, msg_name, 20, rclcpp::PublisherOptions{});
+    }
+    catch (class_loader::LibraryLoadException& e) {
+        RCLCPP_FATAL_STREAM(this->get_logger(), "Failed to load library containing message type '" << msg_name << "'\n" << e.what());
+        throw;
     }
     catch (ros_babel_fish::BabelFishException& e){
-        RCLCPP_WARN_STREAM(this->get_logger(), "Could not find message type for message '" << dbc_message_name_to_ros(key_message) << "'\n"<<e.what());
+        RCLCPP_WARN_STREAM(this->get_logger(), "Could not find message type for message '" << msg_name << "'\n" << e.what());
     }
   }
 }
@@ -243,6 +264,15 @@ void GenericCanDriver::generateAddressClaimAttackMsg(
     MSG->data = claim_data;
   }
 }
+
+bool GenericCanDriver::filter(const uint32_t id) const {
+    bool pass = false;
+    for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
+        pass = (id & msg_filter_masks_[i]) == (msg_filter_ids_[i] & msg_filter_masks_[i]);
+    }
+    return pass;
+}
+
 
 // END MANAGEMENT FUNCTIONS //
 
