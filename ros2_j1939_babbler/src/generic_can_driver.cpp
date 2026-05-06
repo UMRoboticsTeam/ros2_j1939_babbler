@@ -16,7 +16,7 @@
  */
 
 #include "generic_can_driver/generic_can_driver.hpp"
-#include "internal/generic_can_driver.hpp"
+#include "internal/generic_can_driver_impl.hpp"
 
 namespace ros2_j1939 {
     GenericCanDriver::GenericCanDriver(const rclcpp::NodeOptions & OPTIONS) : rclcpp::Node("generic_can_driver", OPTIONS) {
