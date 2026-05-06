@@ -24,16 +24,22 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_library(
   ${PROJECT_NAME} SHARED
-  src/generic_can_driver.cpp
+        src/generic_can_driver.cpp
+        src/generic_can_driver_impl.cpp
 )
 
 ament_export_dependencies(can_dbc_parser)
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-function)
 
-rclcpp_components_register_node(generic_can_driver
+rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "ros2_j1939::GenericCanDriver"
   EXECUTABLE generic_can_driver_exe
+)
+
+target_include_directories(${PROJECT_NAME}
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/internal
 )
 
 ament_auto_package(INSTALL_TO_SHARE
