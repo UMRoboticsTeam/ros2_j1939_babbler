@@ -20,12 +20,12 @@
  * Modifications Copyright 2026 Noah Reeder, University of Manitoba Robotics Team.
  */
 
-#include "internal/generic_can_driver_impl.hpp"
+#include "internal/babel_bridge_impl.hpp"
 
-namespace ros2_j1939
+namespace ros2_j1939_babbler
 {
 
-GenericCanDriver::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
+BabelBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
     fish_ = ros_babel_fish::BabelFish::make_unique();
 
     // automatically configure publishers
@@ -34,9 +34,9 @@ GenericCanDriver::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
 }
 
 
-GenericCanDriver::Impl::~Impl() = default;
+BabelBridge::Impl::~Impl() = default;
 
-void GenericCanDriver::Impl::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG)
+void BabelBridge::Impl::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG)
 {
 RCLCPP_DEBUG(node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", MSG->is_rtr, MSG->is_error, MSG->id, MSG->id & 0x000000FFu);
 // if message is not a request, error, and matches device ID
@@ -117,7 +117,7 @@ if(!MSG->is_rtr && !MSG->is_error && (device_ID_ == (MSG->id & 0x000000FFu) && f
 
 // BEGIN MANAGEMENT FUNCTIONS //
 
-void GenericCanDriver::Impl::configurePublishers(const std::string& msg_topic_prefix)
+void BabelBridge::Impl::configurePublishers(const std::string& msg_topic_prefix)
 {
   // iterate over the dbc to spawn an equal amount of publishers
   for (auto [key_message, value_message] : dbc_name_msg_map_)
@@ -195,39 +195,4 @@ void GenericCanDriver::Impl::configurePublishers(const std::string& msg_topic_pr
 //   RCLCPP_INFO(node_->get_logger(), "Published renaming thing!!!!!!!! %d", new_source_address);
 // }
 
-}  // namespace ros2_j1939
-
-namespace {
-    /**
-     * Strips characters other than [A-Za-z0-9].
-     * @return the modified string
-     */
-    std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
-        std::string result;
-        result.reserve(dbc_message_name.size());
-        std::copy_if(dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result), [](const unsigned char& c){ return std::isalnum(c); });
-        return result;
-    }
-
-    /**
-     * Brings characters to lowercase and strips other than [a-z0-9_]
-     * @return
-     */
-    std::string dbc_signal_name_to_ros(const std::string& dbc_signal_name) {
-        // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
-        std::string result;
-        result.reserve(dbc_signal_name.size());
-        std::copy_if(dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result), [](const unsigned char& c){ return std::isalnum(c)||c=='_'; });
-        std::transform(result.begin(), result.end(), result.begin(),
-                       [](const unsigned char& c){ return std::tolower(c); });
-        return result;
-    }
-
-    IntegerLengths ceil_bits(const uint8_t bit_length) {
-        if (bit_length <= 8) { return IntegerLengths::b8; }
-        if (bit_length <= 16) { return IntegerLengths::b16; }
-        if (bit_length <= 32) { return IntegerLengths::b32; }
-        if (bit_length <= 64) { return IntegerLengths::b64; }
-        throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
-    }
-}
+}  // namespace ros2_j1939_babbler

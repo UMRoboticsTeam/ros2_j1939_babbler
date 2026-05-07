@@ -20,10 +20,8 @@
  * Modifications Copyright 2026 Noah Reeder, University of Manitoba Robotics Team.
  */
 
-#ifndef ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__BRIDGE_CORE
-#define ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__BRIDGE_CORE
-
-#include "generic_can_driver/generic_can_driver.hpp"
+#ifndef ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE
+#define ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE
 
 #include <memory>
 #include <string>
@@ -46,21 +44,9 @@ constexpr inline uint32_t PFPS_MASK = 0x00FFFF00u; // Note doesn't include data 
 constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
 
-namespace {
- enum class IntegerLengths {
-  b8,
-  b16,
-  b32,
-  b64
-};
- std::string dbc_message_name_to_ros(const std::string&);
- std::string dbc_signal_name_to_ros(const std::string&);
- IntegerLengths ceil_bits(const uint8_t bit_length);
-}
-
 using namespace std::chrono_literals;
 
-namespace ros2_j1939
+namespace ros2_j1939_babbler
 {
 
     template <typename T>
@@ -115,6 +101,48 @@ namespace ros2_j1939
       ~BridgeCore() = default;
 
     protected:
+    /**
+     * Different lengths of integers which are available for use in ROS messages.
+     */
+    enum class IntegerLengths {
+        b8,
+        b16,
+        b32,
+        b64
+      };
+
+    /**
+     * Strips characters other than [A-Za-z0-9].
+     * @return the modified string
+     */
+    static std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
+        std::string result;
+        result.reserve(dbc_message_name.size());
+        std::copy_if(dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result), [](const unsigned char& c){ return std::isalnum(c); });
+        return result;
+    }
+
+    /**
+     * Brings characters to lowercase and strips other than [a-z0-9_]
+     * @return
+     */
+    static std::string dbc_signal_name_to_ros(const std::string& dbc_signal_name) {
+        // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
+        std::string result;
+        result.reserve(dbc_signal_name.size());
+        std::copy_if(dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result), [](const unsigned char& c){ return std::isalnum(c)||c=='_'; });
+        std::transform(result.begin(), result.end(), result.begin(),
+                       [](const unsigned char& c){ return std::tolower(c); });
+        return result;
+    }
+
+    static IntegerLengths ceil_bits(const uint8_t bit_length) {
+        if (bit_length <= 8) { return IntegerLengths::b8; }
+        if (bit_length <= 16) { return IntegerLengths::b16; }
+        if (bit_length <= 32) { return IntegerLengths::b32; }
+        if (bit_length <= 64) { return IntegerLengths::b64; }
+        throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
+    }
 
       /**
        * @brief Parses incoming CAN frames.
@@ -246,6 +274,6 @@ namespace ros2_j1939
       std::map<std::string , NewEagle::DbcMessage> dbc_name_msg_map_;
       rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr sub_can_;
     };
-}  // namespace generic_can_driver
+}  // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__BRIDGE_CORE
+#endif  // ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE

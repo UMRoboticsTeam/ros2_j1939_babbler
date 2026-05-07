@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(generic_can_driver)
+project(ros2_j1939_babbler)
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
@@ -24,8 +24,8 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_library(
   ${PROJECT_NAME} SHARED
-        src/generic_can_driver.cpp
-        src/generic_can_driver_impl.cpp
+        src/babel_bridge.cpp
+        src/babel_bridge_impl.cpp
 )
 
 ament_export_dependencies(can_dbc_parser)
@@ -33,8 +33,8 @@ ament_export_dependencies(can_dbc_parser)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-function)
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "ros2_j1939::GenericCanDriver"
-  EXECUTABLE generic_can_driver_exe
+  PLUGIN "ros2_j1939_babbler::BabelBridge"
+  EXECUTABLE babel_bridge
 )
 
 target_include_directories(${PROJECT_NAME}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 University of Manitoba Robotics Team
+* Copyright 2026 University of Manitoba Robotics Team
  * Noah Reeder
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,16 +15,24 @@
  * limitations under the License.
  */
 
-#include "generic_can_driver/generic_can_driver.hpp"
-#include "internal/generic_can_driver_impl.hpp"
+#ifndef ROS2_J1939_BABBLER__BABEL_BRIDGE
+#define ROS2_J1939_BABBLER__BABEL_BRIDGE
 
-namespace ros2_j1939 {
-    GenericCanDriver::GenericCanDriver(const rclcpp::NodeOptions & OPTIONS) : rclcpp::Node("generic_can_driver", OPTIONS) {
-        impl_ = std::make_shared<GenericCanDriver::Impl>(this);
-    }
+#include <rclcpp/rclcpp.hpp>
 
-    GenericCanDriver::~GenericCanDriver()  = default;
-}
+namespace ros2_j1939_babbler {
+    class BabelBridge  : public rclcpp::Node {
+    public:
+        explicit BabelBridge(const rclcpp::NodeOptions & OPTIONS);
 
-#include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(ros2_j1939::GenericCanDriver)
+        ~BabelBridge() override;
+
+    private:
+        // Forward-declare implementation
+        class Impl;
+
+        std::shared_ptr<Impl> impl_;
+    };
+} // namespace ros2_j1939_babbler
+
+#endif  // ROS2_J1939_BABBLER__BABEL_BRIDGE

@@ -18,7 +18,7 @@ def generate_launch_description():
     #### Socketcan Receiver CAN0 Config ####
 
     _CAN_PARAMS_FILE = os.path.join(
-      get_package_share_directory('generic_can_driver'),
+      get_package_share_directory('ros2_j1939_babbler'),
       'config',
       'socketcan_params.yaml'
     )
@@ -115,7 +115,7 @@ def generate_launch_description():
     ### kuebler right ###
 
     _GENERIC_CAN_PARAMS_FILE = os.path.join(
-      get_package_share_directory('generic_can_driver'),
+      get_package_share_directory('ros2_j1939_babbler'),
       'config',
       'generic_can_params.yaml'
     )
@@ -123,12 +123,12 @@ def generate_launch_description():
     with open(_GENERIC_CAN_PARAMS_FILE, 'r') as file:
       generic_can_params = yaml.safe_load(file)
 
-    generic_can_dbc_path = get_package_share_directory('generic_can_driver') + \
+    generic_can_dbc_path = get_package_share_directory('ros2_j1939_babbler') + \
     '/launch/' + generic_can_params["dbc_file"]
 
     generic_can_node = LifecycleNode(
-        package='generic_can_driver',
-        executable='generic_can_driver_exe',
+        package='ros2_j1939_babbler',
+        executable='babel_bridge',
         name='generic_' + generic_can_params["sensor_name"],
         namespace=TextSubstitution(text=''),
         parameters=[

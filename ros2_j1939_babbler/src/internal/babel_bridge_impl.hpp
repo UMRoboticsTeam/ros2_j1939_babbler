@@ -15,18 +15,19 @@
  * limitations under the License.
  */
 
-#ifndef ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__GENERIC_CAN_DRIVER_IMPL
-#define ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__GENERIC_CAN_DRIVER_IMPL
+#ifndef ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL
+#define ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL
 
 #include "bridge_core.hpp"
+#include "ros2_j1939_babbler//babel_bridge.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
 #include <ros_babel_fish/babel_fish.hpp>
 
 
-namespace ros2_j1939 {
-    class GenericCanDriver::Impl : public BridgeCore<GenericCanDriver::Impl> {
+namespace ros2_j1939_babbler {
+    class BabelBridge::Impl : public BridgeCore<BabelBridge::Impl> {
     public:
       explicit Impl(rclcpp::Node* node);
 
@@ -61,6 +62,6 @@ namespace ros2_j1939 {
       ros_babel_fish::BabelFish::UniquePtr fish_;
       std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_;
     };
-}
+} // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939__GENERIC_CAN_DRIVER__INTERNAL__GENERIC_CAN_DRIVER_IMPL
+#endif  // ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL
