@@ -5,6 +5,8 @@ set(Python3_EXECUTABLE python)
 set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc")
 
 set(MSGS_DIR "${CMAKE_CURRENT_BUILD_DIR}/msg/")
+#set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/rosidl_generator_cpp/ros2_j1939_babbler_msgs/type_conversion.hpp")
+set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/type_conversion.hpp")
 
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -20,7 +22,7 @@ find_package(rosidl_default_generators REQUIRED)
 execute_process(
         COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/MessageGenerator.py
-        "${DBC_PATH}" "${MSGS_DIR}")
+        "${DBC_PATH}" "${MSGS_DIR}" "${TYPE_CONVERSION_HEADER_PATH}")
 
 # Tell CMake that it needs to reconfigure if the DBC file changes
 # This is because the msgs list (and the rosidl target list) is generated at configure time not build time
@@ -51,6 +53,10 @@ endif ()
 install(
         FILES ${DBC_PATH}
         DESTINATION share/${PROJECT_NAME}/
+)
+install(
+        FILES ${TYPE_CONVERSION_HEADER_PATH}
+        DESTINATION include/${PROJECT_NAME}/${PROJECT_NAME}
 )
 
 ament_export_dependencies(rosidl_default_runtime)
