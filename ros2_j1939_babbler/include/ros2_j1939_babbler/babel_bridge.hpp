@@ -20,10 +20,12 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-namespace ros2_j1939_babbler {
-    class BabelBridge  : public rclcpp::Node {
+namespace ros2_j1939_babbler
+{
+    class BabelBridge : public rclcpp::Node
+    {
     public:
-        explicit BabelBridge(const rclcpp::NodeOptions & OPTIONS);
+        explicit BabelBridge(const rclcpp::NodeOptions& OPTIONS);
 
         ~BabelBridge() override;
 

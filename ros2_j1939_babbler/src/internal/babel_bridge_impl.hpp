@@ -19,7 +19,7 @@
 #define ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL
 
 #include "bridge_core.hpp"
-#include "ros2_j1939_babbler//babel_bridge.hpp"
+#include "ros2_j1939_babbler/babel_bridge.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 

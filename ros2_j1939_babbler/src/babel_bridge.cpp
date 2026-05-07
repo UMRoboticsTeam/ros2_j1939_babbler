@@ -19,11 +19,11 @@
 #include "internal/babel_bridge_impl.hpp"
 
 namespace ros2_j1939_babbler {
-    BabelBridge::BabelBridge(const rclcpp::NodeOptions & OPTIONS) : rclcpp::Node("babel_bridge", OPTIONS) {
+    BabelBridge::BabelBridge(const rclcpp::NodeOptions& OPTIONS) : rclcpp::Node("babel_bridge", OPTIONS) {
         impl_ = std::make_shared<BabelBridge::Impl>(this);
     }
 
-    BabelBridge::~BabelBridge()  = default;
+    BabelBridge::~BabelBridge() = default;
 } // namespace ros2_j1939_babbler
 
 #include "rclcpp_components/register_node_macro.hpp"
