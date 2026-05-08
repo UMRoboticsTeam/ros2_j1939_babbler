@@ -5,8 +5,8 @@ set(Python3_EXECUTABLE python)
 set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc")
 
 set(MSGS_DIR "${CMAKE_CURRENT_BUILD_DIR}/msg/")
-#set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/rosidl_generator_cpp/ros2_j1939_babbler_msgs/type_conversion.hpp")
 set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/type_conversion.hpp")
+set(TYPE_CONVERSION_HELPERS_HEADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/type_conversion_helpers.hpp")
 
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -51,11 +51,11 @@ if (BUILD_TESTING)
 endif ()
 
 install(
-        FILES ${DBC_PATH}
+        FILES "${DBC_PATH}"
         DESTINATION share/${PROJECT_NAME}/
 )
 install(
-        FILES ${TYPE_CONVERSION_HEADER_PATH}
+        FILES "${TYPE_CONVERSION_HEADER_PATH}" "${TYPE_CONVERSION_HELPERS_HEADER_PATH}"
         DESTINATION include/${PROJECT_NAME}/${PROJECT_NAME}
 )
 

@@ -65,8 +65,7 @@ def compute_dtype(signal: cantools.database.Signal) -> str:
 
 def generate_type_conversions(messages: list[cantools.database.Message], type_conversion_output: str):
     with open(type_conversion_output, "w") as f:
-        f.write("""
-/*
+        f.write("""/*
  * Copyright 2026 University of Manitoba Robotics Team
  * Noah Reeder
  *
@@ -88,8 +87,10 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
  * No ownership is claimed on contents between "BEGIN AUTO-GENERATED SPECIALISATION" and "END AUTO-GENERATED SPECIALISATION". 
  */
 
-#ifndef ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS
-#define ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS
+#ifndef ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
+#define ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
+
+#include "type_conversion_helpers.hpp"
 
 #include <unordered_map>
 #include <string>
@@ -108,33 +109,18 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
         f.write("""
         
 namespace ros2_j1939_babbler_msgs {
-    // Need this to prevent compiler from automatically instantiating default buildAndPublish and hitting the static_assert
-    template<typename T>
-    struct dependent_false : std::false_type {};
     
-    // Default type conversion, throws a compile-time error because we are expecting template to be specialised for known messages
-    template<typename MSG_TYPE>
-    void buildAndPublish(rclcpp::Publisher<MSG_TYPE>& publisher, const std::unordered_map<std::string, double>& fields, std_msgs::msg::Header header, const uint8_t src_addr)
-    {
-        static_assert(false, "No type conversion was generated for the provided message type");
-    }
     
     // ===== Type conversion functions =====
-        """)
+
+    // BEGIN AUTO-GENERATED SPECIALISATIONS""")
         for message in messages:
             msg_type_name = MESSAGE_NAME_MASK.sub('', message.name)
-            f.write("""
-    template<>""")
             f.write(f"""
-    inline void buildAndPublish<msg::{msg_type_name}>(rclcpp::Publisher<msg::{msg_type_name}>& publisher, const std::unordered_map<std::string, double>& fields, std_msgs::msg::Header header, const uint8_t src_addr)""")
+    template<>
+    inline void populate<msg::{msg_type_name}>(msg::{msg_type_name}& msg, const std::unordered_map<std::string, double>& fields)""")
             f.write("""
     {""")
-            f.write(f"""
-        msg::{msg_type_name} msg;
-        msg.header = std::move(header);
-        msg.src_addr = src_addr;
-        // BEGIN AUTO-GENERATED SPECIALISATION
-            """)
             for signal in message.signals:
                 dtype = compute_dtype(signal)
                 # Map ROS2 message field type to C++ type
@@ -142,96 +128,45 @@ namespace ros2_j1939_babbler_msgs {
                 elif dtype == "float64": dtype = "double"
                 else: dtype = f"std::{dtype}_t"
                 f.write(f"""
-        msg.{FIELD_NAME_MASK.sub('', signal.name.lower())} = static_cast<{dtype}>(fields.at("{signal.name}"));
-                """)
+        msg.{FIELD_NAME_MASK.sub('', signal.name.lower())} = static_cast<{dtype}>(fields.at("{signal.name}"));""")
             f.write("""
-        // END AUTO-GENERATED SPECIALISATION
-        publisher.publish(msg);
-    }
-            """)
+    }""")
         f.write("""
+    // END AUTO-GENERATED SPECIALISATIONS
     
-    // ===== Dispatch table =====
     
-    template<uint32_t PGN> struct pgn_message_type_map;""")
+    // ===== Map converting PGN to ROS message type =====
+    
+    // BEGIN AUTO-GENERATED SPECIALISATIONS""")
         for message in messages:
             msg_type_name = MESSAGE_NAME_MASK.sub('', message.name)
             f.write(f"""
     template<> struct pgn_message_type_map<{message.frame_id & PGN_MASK}> {{ using type = msg::{msg_type_name}; }};""")
-
         f.write("""
-        
-    template<typename MSG_TYPE> struct message_type_name_map;""")
+    // END AUTO-GENERATED SPECIALISATIONS
+    
+    
+    // ===== Map converting ROS message type to the ROS message type as a string =====    
+    
+    // BEGIN AUTO-GENERATED SPECIALISATIONS""")
         for message in messages:
             msg_type_name = MESSAGE_NAME_MASK.sub('', message.name)
             f.write(f"""
     template<> struct message_type_name_map<msg::{msg_type_name}> {{ static constexpr char name[] = "{msg_type_name}"; }};""")
-
         f.write("""
-        
-    // Use loop, evaluated at compile time, to find index in storage tuple of a given PGN 
-    template<uint32_t PGN, uint32_t... PGNs>
-    constexpr std::size_t index_of() {
-        constexpr uint32_t arr[] = {PGNs...};
-        for (std::size_t i = 0; i < sizeof...(PGNs); ++i)
-        {
-            if (arr[i] == PGN) { return i; }
-        }
-        static_assert(sizeof...(PGNs) > 0, "PGN not found in set of known PGNs");
-        return 0;
-    }
+    // END AUTO-GENERATED SPECIALISATIONS
     
-    template<uint32_t... PGNs>
-    class DispatchTable_T {
-    public:
-        DispatchTable_T(rclcpp::Node* node, const std::string& topic_prefix, const size_t qos_history_depth) 
-            : publishers_(createPublishers(node, topic_prefix, qos_history_depth, std::integral_constant<uint32_t, PGNs>{}...))
-            {}
     
-        void runtime_dispatch(const uint32_t pgn, const std::unordered_map<std::string, double>& fields, std_msgs::msg::Header header, const uint8_t src_addr)
-        {
-            bool handled = ((pgn == PGNs ? (dispatch<PGNs>(fields, std::move(header), src_addr), true) : false) || ...); // Fold expression will expand into a giant switch
-            assert(handled);
-        }
-        
-        template<uint32_t PGN>
-        void dispatch(const std::unordered_map<std::string, double>& fields, std_msgs::msg::Header header, const uint8_t src_addr) {
-            constexpr std::size_t index = index_of<PGN, PGNs...>();
-            auto& publisher = std::get<index>(publishers_);
-            buildAndPublish<typename pgn_message_type_map<PGN>::type>(*publisher, fields, std::move(header), src_addr);
-        }
-        
-    private:
-        using storage_t = std::tuple<std::shared_ptr<rclcpp::Publisher<typename pgn_message_type_map<PGNs>::type>>...>;
-        storage_t publishers_;
-        
-        template<uint32_t PGN>
-        static std::shared_ptr<rclcpp::Publisher<typename pgn_message_type_map<PGN>::type>> makePublisher(rclcpp::Node* node, const std::string& topic_prefix, const size_t qos_history_depth)
-        {
-            using MSG_TYPE = typename pgn_message_type_map<PGN>::type;
-            return node->create_publisher<MSG_TYPE>((std::ostringstream() << topic_prefix << '/' << message_type_name_map<MSG_TYPE>::name).str(), qos_history_depth);
-        }
-        
-        template<uint32_t... PGNs_L>
-        static storage_t createPublishers(rclcpp::Node* node, const std::string& topic_prefix, const size_t qos_history_depth, std::integral_constant<uint32_t, PGNs_L>... /*unused*/)
-        {
-            return std::make_tuple(makePublisher<PGNs_L>(node, topic_prefix, qos_history_depth)...);
-        }   
-    }; 
+    // ===== Create alias for dispatch table containing list of PGNs for all generated ROS messages =====
         """)
         f.write(f"""
     using DispatchTable = DispatchTable_T<{", ".join(f"{msg.frame_id & PGN_MASK}" for msg in messages)}>;
         """)
         f.write("""
 } // namespace ros2_j1939_babbler_msgs
-#endif
-        """)
 
-### Alternatively could use table for runtime dispatch ###
-#using func_t = void(*)(DispatchTable_T&)
-#static constexpr func_t table[] = {
-#    [](DispatchTable& self) { self.template dispatch<PGNs>(); }...
-#};
+#endif //ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
+        """)
 
 def ceil_bits(bit_length):
     if bit_length <= 8: return 8

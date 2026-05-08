@@ -20,8 +20,8 @@
  * Modifications Copyright 2026 Noah Reeder, University of Manitoba Robotics Team.
  */
 
-#ifndef ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE
-#define ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE
+#ifndef ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
+#define ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
 
 #include <memory>
 #include <string>
@@ -294,4 +294,4 @@ namespace ros2_j1939_babbler
     };
 } // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE
+#endif  // ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_

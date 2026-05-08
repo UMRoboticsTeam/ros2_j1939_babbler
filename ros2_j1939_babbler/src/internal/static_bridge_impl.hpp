@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#ifndef ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL
-#define ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL
+#ifndef ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL_
+#define ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL_
 
 #include "bridge_core.hpp"
 #include "ros2_j1939_babbler/static_bridge.hpp"
@@ -64,4 +64,4 @@ namespace ros2_j1939_babbler
     };
 } // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL
+#endif  // ROS2_J1939_BABBLER__INTERNAL__STATIC_BRIDGE_IMPL_

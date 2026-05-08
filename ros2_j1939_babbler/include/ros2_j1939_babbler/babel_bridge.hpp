@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#ifndef ROS2_J1939_BABBLER__BABEL_BRIDGE
-#define ROS2_J1939_BABBLER__BABEL_BRIDGE
+#ifndef ROS2_J1939_BABBLER__BABEL_BRIDGE_
+#define ROS2_J1939_BABBLER__BABEL_BRIDGE_
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -37,4 +37,4 @@ namespace ros2_j1939_babbler
     };
 } // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939_BABBLER__BABEL_BRIDGE
+#endif  // ROS2_J1939_BABBLER__BABEL_BRIDGE_
