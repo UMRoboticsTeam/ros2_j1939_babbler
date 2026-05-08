@@ -25,6 +25,8 @@
 namespace ros2_j1939_babbler {
 
     BabelBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
+        msg_package_ = node_->declare_parameter<std::string>("msg_package", "");
+
         fish_ = ros_babel_fish::BabelFish::make_unique();
 
         // automatically configure publishers

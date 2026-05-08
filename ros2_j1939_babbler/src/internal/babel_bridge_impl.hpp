@@ -26,27 +26,29 @@
 #include <ros_babel_fish/babel_fish.hpp>
 
 
-namespace ros2_j1939_babbler {
-    class BabelBridge::Impl : public BridgeCore<BabelBridge::Impl> {
+namespace ros2_j1939_babbler
+{
+    class BabelBridge::Impl : public BridgeCore<BabelBridge::Impl>
+    {
     public:
-      explicit Impl(rclcpp::Node* node);
+        explicit Impl(rclcpp::Node* node);
 
-      ~Impl();
+        ~Impl();
 
-      /**
-       * @brief Parses incoming CAN frames.
-       *
-       * 1. Checks if incoming frame is valid and has a matching device ID (as set in params)
-       *
-       * 2. Passes can frame to a local constant
-       *
-       * 3. Checks if the message exists in the dbc
-       *
-       * 4. Stuffs a CanData value-key message
-       *
-       * 5. Publishes that message on the message topic
-       */
-      void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
+        /**
+         * @brief Parses incoming CAN frames.
+         *
+         * 1. Checks if incoming frame is valid and has a matching device ID (as set in params)
+         *
+         * 2. Passes can frame to a local constant
+         *
+         * 3. Checks if the message exists in the dbc
+         *
+         * 4. Stuffs a CanData value-key message
+         *
+         * 5. Publishes that message on the message topic
+         */
+        void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
 
         /**
          * @brief Checks the messages in the DBC and creates a publisher for each one
@@ -56,11 +58,12 @@ namespace ros2_j1939_babbler {
          *
          * @param msg_topic_prefix prefix to apply before message topics
          */
-      void configurePublishers(const std::string& msg_topic_prefix);
+        void configurePublishers(const std::string& msg_topic_prefix);
 
     private:
-      ros_babel_fish::BabelFish::UniquePtr fish_;
-      std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_;
+        std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
+        ros_babel_fish::BabelFish::UniquePtr fish_; // Babelfish instance for loading/populating message definitions
+        std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // ROS message name to publisher
     };
 } // namespace ros2_j1939_babbler
 

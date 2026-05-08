@@ -57,13 +57,11 @@ namespace ros2_j1939_babbler
             RCLCPP_INFO(node_->get_logger(), "Starting Generic Can Driver...");
 
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
-            msg_package_ = node_->declare_parameter<std::string>("msg_package", "");
             frame_id_ = node_->declare_parameter<std::string>("frame_id", "");
             sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "");
             device_ID_ = node_->declare_parameter<uint8_t>("device_ID", 0);
-            can_interface_ = node_->declare_parameter<std::string>("can_interface", "can0");
             sub_topic_can_ = node_->declare_parameter<std::string>("can_sub_topic", "");
-            pub_topic_can_ = node_->declare_parameter<std::string>("pub_topic_can", "");
+            //pub_topic_can_ = node_->declare_parameter<std::string>("pub_topic_can", ""); TODO: Implement ROS-to-J1939
             msg_topic_prefix_ = node_->declare_parameter<std::string>("msg_topic_prefix", "");
             auto msg_filter_range = rcl_interfaces::msg::ParameterDescriptor{};
             msg_filter_range.integer_range = {
@@ -90,7 +88,7 @@ namespace ros2_j1939_babbler
             RCLCPP_INFO(node_->get_logger(), "sensor_name: %s", sensor_name_.c_str());
             RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
             RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", sub_topic_can_.c_str());
-            RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", pub_topic_can_.c_str());
+            //RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", pub_topic_can_.c_str()); TODO: Implement ROS-to-J1939
 
             // setup dbc database - brings in j1939 standard
             this->setupDatabase();
@@ -273,16 +271,13 @@ namespace ros2_j1939_babbler
 
         // params
         std::string dbw_dbc_file_; // the messages definition (such as J1939 standard)
-        std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
         std::string frame_id_; // used on the published messages - usually just the location of the sensor on your robot
         std::string sensor_name_; // name of your sensor / device (e.g. engine ECU)
         uint8_t device_ID_; // j1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
         std::string device_ID_str_;
         // [device_ID_str_] just turning the device_id into a string. used to populate message headers
-        std::string can_interface_; // the name of the CAN line the device is on (e.g. can0)
-        // if true, will set up publishers for EVERY message in the provided dbc
         std::string sub_topic_can_; // subscribe to the topic socket_can is publishing from the CAN line
-        std::string pub_topic_can_; // publish to the topic socket_can is sending to the CAN line
+        //std::string pub_topic_can_; // publish to the topic socket_can is sending to the CAN line TODO: Implement ROS-to-J1939
         std::string msg_topic_prefix_; // prefix to add to the topic name for each CAN message
         std::vector<int64_t> msg_filter_ids_; // list of ids messages must match (within a mask) to be processed
         std::vector<int64_t> msg_filter_masks_; // parallel list of masks to apply to the filter ids
