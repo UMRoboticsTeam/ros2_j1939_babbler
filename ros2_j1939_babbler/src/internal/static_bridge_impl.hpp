@@ -1,5 +1,5 @@
 /*
-* Copyright 2026 University of Manitoba Robotics Team
+ * Copyright 2026 University of Manitoba Robotics Team
  * Noah Reeder
  *
  * Licensed under the Apache License, Version 2.0 (the "License");

@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2026 University of Manitoba Robotics Team
  * Noah Reeder
