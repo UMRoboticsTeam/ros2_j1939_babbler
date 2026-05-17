@@ -7,7 +7,7 @@ from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessStart
 from launch.events import matches_action
 from launch.substitutions import LaunchConfiguration, TextSubstitution
-from launch_ros.actions import LifecycleNode
+from launch_ros.actions import LifecycleNode, Node
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from lifecycle_msgs.msg import Transition
@@ -123,10 +123,9 @@ def generate_launch_description():
     with open(_GENERIC_CAN_PARAMS_FILE, 'r') as file:
       generic_can_params = yaml.safe_load(file)
 
-    generic_can_dbc_path = get_package_share_directory('ros2_j1939_babbler') + \
-    '/launch/' + generic_can_params["dbc_file"]
+    generic_can_dbc_path = get_package_share_directory('ros2_j1939_babbler_msgs') + "/" +  generic_can_params["dbc_file"]
 
-    generic_can_node = LifecycleNode(
+    generic_can_node = Node(
         package='ros2_j1939_babbler',
         executable='babel_bridge',
         name='generic_' + generic_can_params["sensor_name"],
@@ -139,37 +138,6 @@ def generate_launch_description():
         # arguments=["--ros-args", "--log-level", "debug"]
         )
 
-    generic_can_configure_event_handler = RegisterEventHandler(
-        event_handler=OnProcessStart(
-            target_action=generic_can_node,
-            on_start=[
-                EmitEvent(
-                    event=ChangeState(
-                        lifecycle_node_matcher=matches_action(generic_can_node),
-                        transition_id=Transition.TRANSITION_CONFIGURE,
-                    ),
-                ),
-            ],
-        ),
-        condition=IfCondition(LaunchConfiguration('auto_configure')),
-    )
-
-    generic_can_activate_event_handler = RegisterEventHandler(
-        event_handler=OnStateTransition(
-            target_lifecycle_node=generic_can_node,
-            start_state='configuring',
-            goal_state='inactive',
-            entities=[
-                EmitEvent(
-                    event=ChangeState(
-                        lifecycle_node_matcher=matches_action(generic_can_node),
-                        transition_id=Transition.TRANSITION_ACTIVATE,
-                    ),
-                ),
-            ],
-        ),
-        condition=IfCondition(LaunchConfiguration('auto_activate')),
-    )  
 
 
     return LaunchDescription([
@@ -182,6 +150,4 @@ def generate_launch_description():
         socket_can_receiver_can_configure_event_handler,
         socket_can_receiver_can0_activate_event_handler,
         generic_can_node,
-        generic_can_configure_event_handler,
-        generic_can_activate_event_handler,
     ])
