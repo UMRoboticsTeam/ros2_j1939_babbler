@@ -18,6 +18,9 @@ bridge needs for populating the ROS message from the J1939 message and for gener
 An example of the generated header is shown below. The templates to complete the conversions and dispatchng are contained in
 `ros2_j1939_babbler_msgs/include/ros2_j1939_babbler_msgs/type_conversion_helpers.hpp`.
 
+As templates are extensively used as part of the compile-time implementation, the PIMPL technique is used to prevent
+implementation details from leaking into public headers.
+
 
 ## How to Use
 1. Replace `ros2_J1939_babbler_msgs/Messages.dbc` with your own DBC file, or alternatively set the CMake variable `DBC_PATH`

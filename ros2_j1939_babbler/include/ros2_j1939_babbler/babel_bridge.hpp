@@ -22,18 +22,28 @@
 
 namespace ros2_j1939_babbler
 {
+    /**
+     * @breif ROS-J1939 bridge node which loads message types at runtime.
+     */
     class BabelBridge : public rclcpp::Node
     {
     public:
+        /**
+         * @breif Create the node.
+         * @param OPTIONS options to initialise node with
+         */
         explicit BabelBridge(const rclcpp::NodeOptions& OPTIONS);
 
+        /**
+         * @breif Destroy the node.
+         */
         ~BabelBridge() override;
 
     private:
         // Forward-declare implementation
         class Impl;
 
-        std::shared_ptr<Impl> impl_;
+        std::shared_ptr<Impl> impl_; // Backing implementation (PIMPL)
     };
 } // namespace ros2_j1939_babbler
 

@@ -26,35 +26,38 @@
 #include <ros_babel_fish/babel_fish.hpp>
 
 
-namespace ros2_j1939_babbler
-{
-    class BabelBridge::Impl : public BridgeCore<BabelBridge::Impl>
-    {
+namespace ros2_j1939_babbler {
+    /**
+     * @brief Implementation of the runtime bridge, hidden from users through PIMPL pattern.
+     */
+    class BabelBridge::Impl : public BridgeCore<BabelBridge::Impl> {
     public:
+        /**
+         * @brief Initialise the node implementation.
+         * @param node ROS node to interact with the ROS system through
+         */
         explicit Impl(rclcpp::Node* node);
 
+        /**
+         * @brief Release resources.
+         */
         ~Impl();
 
         /**
-         * @brief Parses incoming CAN frames.
+         * @brief Handle an incoming CAN frame.
          *
-         * 1. Checks if incoming frame is valid and has a matching device ID (as set in params)
+         * If the message is present in the DBC file, determines what the corresponding ROS message would be, and if it
+         * exists populates a message and dispatches it to the appropriate publisher.
          *
-         * 2. Passes can frame to a local constant
-         *
-         * 3. Checks if the message exists in the dbc
-         *
-         * 4. Stuffs a CanData value-key message
-         *
-         * 5. Publishes that message on the message topic
+         * @param MSG CAN message to handle
          */
         void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
 
         /**
-         * @brief Checks the messages in the DBC and creates a publisher for each one
+         * @brief Checks the messages in the DBC and creates a publisher for each one.
          *
-         * The publishers are of type "j1939_msgs::msg::CanData" with a topic name folling a
-         * "sensor_name/key_message" pattern TODO: Docs
+         * For every message in the DBC which has an associated ROS type, a publisher is created with a topic following the
+         * pattern `msg_topic_prefix/sensor_name/key_message`.
          *
          * @param msg_topic_prefix prefix to apply before message topics
          */
@@ -63,8 +66,8 @@ namespace ros2_j1939_babbler
     private:
         std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
         ros_babel_fish::BabelFish::UniquePtr fish_; // Babelfish instance for loading/populating message definitions
-        std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // ROS message name to publisher
+        std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // Lookup publisher from ROS message name
     };
 } // namespace ros2_j1939_babbler
 
-#endif  // ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
+#endif // ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
