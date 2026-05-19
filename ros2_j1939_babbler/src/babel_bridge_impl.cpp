@@ -22,6 +22,19 @@
 
 #include "internal/babel_bridge_impl.hpp"
 
+namespace {
+    enum class IntegerLengths;
+    IntegerLengths ceil_bits(const uint8_t bit_length);
+    void putSignalInRosMessage(
+            ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
+            const std::string& ros_signal_name
+    );
+    void putSignalInCanMessage(
+            const ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
+            const std::string& ros_signal_name
+    );
+} // namespace
+
 namespace ros2_j1939_babbler {
 
     BabelBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
@@ -32,6 +45,8 @@ namespace ros2_j1939_babbler {
         // automatically configure publishers
         this->configurePublishers(msg_topic_prefix_);
         RCLCPP_INFO(node_->get_logger(), "Setup publishers!");
+        this->configureSubscribers(msg_topic_prefix_);
+        RCLCPP_INFO(node_->get_logger(), "Setup subscribers!");
     }
 
 
@@ -59,7 +74,7 @@ namespace ros2_j1939_babbler {
                 // then create a local ros2 message
                 // not really sure why we create the shared_ptr and reference the object instead of stack-allocating, but this is what all the examples do
                 ros_babel_fish::CompoundMessage::SharedPtr can_data_ptr =
-                        fish_->create_message_shared(msg_package_ + "/msg/" + dbc_message_name_to_ros(message.GetName()));
+                        fish_->create_message_shared(dbc_ros_message_name_mappings_.at(message.GetName()));
                 ros_babel_fish::CompoundMessage& can_data = *can_data_ptr;
 
                 // populate the local ros2 message header, frame, and message name
@@ -71,91 +86,49 @@ namespace ros2_j1939_babbler {
                 std::map<std::string, NewEagle::DbcSignal> signals_map = *message.GetSignals();
                 for (auto [key_signal, value_signal] : signals_map) {
                     // get the data for the current signal, figure out type, and insert into message accordingly
-                    switch (value_signal.GetDataType()) {
-                        case NewEagle::INT:
-                            RCLCPP_DEBUG(
-                                    node_->get_logger(),
-                                    "Processing integer field: signed:%s, raw:%f, scale:%f, length:%u, offset:%f, result:%f",
-                                    value_signal.GetSign() == NewEagle::SIGNED ? "Y" : "N", value_signal.GetInitialValue(),
-                                    value_signal.GetGain(), value_signal.GetDlc(), value_signal.GetOffset(),
-                                    value_signal.GetResult()
-                            );
-                            // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
-                            switch (ceil_bits(value_signal.GetDlc())) {
-                                case IntegerLengths::b8:
-                                    if (value_signal.GetSign() == NewEagle::SIGNED) {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<int8_t>(value_signal.GetResult());
-                                    } else {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<uint8_t>(value_signal.GetResult());
-                                    }
-                                    break;
-                                case IntegerLengths::b16:
-                                    if (value_signal.GetSign() == NewEagle::SIGNED) {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<int16_t>(value_signal.GetResult());
-                                    } else {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<uint16_t>(value_signal.GetResult());
-                                    }
-                                    break;
-                                case IntegerLengths::b32:
-                                    if (value_signal.GetSign() == NewEagle::SIGNED) {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<int32_t>(value_signal.GetResult());
-                                    } else {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<uint32_t>(value_signal.GetResult());
-                                    }
-                                    break;
-                                case IntegerLengths::b64:
-                                    if (value_signal.GetSign() == NewEagle::SIGNED) {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<int64_t>(value_signal.GetResult());
-                                    } else {
-                                        can_data[dbc_signal_name_to_ros(key_signal)] =
-                                                static_cast<uint64_t>(value_signal.GetResult());
-                                    }
-                                    break;
-                            }
-                            break;
-                        case NewEagle::FLOAT:
-                            // This is dumb, but can_dbc_parser is handling this awkwardly
-                            // Babel fish won't let us put a double in a float32 field, but can_dbc_parser always returns double even if underlying data is supposed to be float32
-                            // So we cast the result from can_dbc_parser to float before we insert into the field, and call it a day
-                            can_data[dbc_signal_name_to_ros(key_signal)] = static_cast<float>(value_signal.GetResult());
-                            RCLCPP_DEBUG(
-                                    node_->get_logger(), "Processing float field: raw:%f, scale:%f, offset:%f, result:%f",
-                                    value_signal.GetInitialValue(), value_signal.GetGain(), value_signal.GetOffset(),
-                                    value_signal.GetResult()
-                            );
-                            break;
-                        case NewEagle::DOUBLE:
-                            can_data[dbc_signal_name_to_ros(key_signal)] = value_signal.GetResult();
-                            RCLCPP_DEBUG(
-                                    node_->get_logger(), "Processing double field: raw:%f, scale:%f, offset:%f, result:%f",
-                                    value_signal.GetInitialValue(), value_signal.GetGain(), value_signal.GetOffset(),
-                                    value_signal.GetResult()
-                            );
-                            break;
-                    }
+                    putSignalInRosMessage(
+                            can_data, value_signal, node_->get_logger(), dbc_ros_signal_name_mappings_.at(key_signal)
+                    );
                 }
 
                 // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the
                 //    message isn't in there we ignore and let others endpoints handle
 
                 // publish finalized message
-                publishers_[dbc_message_name_to_ros(message.GetName())]->publish(can_data);
+                publishers_[dbc_ros_message_name_mappings_.at(message.GetName())]->publish(can_data);
             }
         }
+    }
+
+    void BabelBridge::Impl::txFrame(ros_babel_fish::CompoundMessage::UniquePtr MSG) {
+        auto it = ros_msg_to_ids_.find(MSG->name());
+
+        if (it == ros_msg_to_ids_.end()) {
+            RCLCPP_ERROR(node_->get_logger(), "Could not map ROS message '%s' to message ID in DBC", MSG->name().c_str());
+            return;
+        }
+
+        NewEagle::DbcMessage* message_type = dbw_dbc_db_.GetMessageById(it->second);
+        if (message_type == nullptr) {
+            RCLCPP_ERROR(
+                    node_->get_logger(), "Could not map ROS message '%s' with CAN ID '%d' to a type", MSG->name().c_str(),
+                    it->second
+            );
+            return;
+        }
+
+        for (auto& [signal_name, signal] : *message_type->GetSignals()) {
+            putSignalInCanMessage(*MSG, signal, node_->get_logger(), dbc_ros_signal_name_mappings_.at(signal_name));
+        }
+
+        pub_can_->publish(message_type->GetFrame());
     }
 
     // BEGIN MANAGEMENT FUNCTIONS //
 
     void BabelBridge::Impl::configurePublishers(const std::string& msg_topic_prefix) {
         // iterate over the dbc to spawn an equal amount of publishers
-        for (auto [key_message, value_message] : dbc_name_msg_map_) {
+        for (auto& [key_message, value_message] : dbc_name_msg_map_) { // GetSignals is not const-qualified...
             std::string msg_name =
                     (std::ostringstream{} << msg_package_ << "/msg/" << dbc_message_name_to_ros(key_message)).str();
             RCLCPP_DEBUG(node_->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
@@ -168,8 +141,48 @@ namespace ros2_j1939_babbler {
                                               << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
                                               << sensor_name_ << '/' << key_message)
                                 .str();
-                publishers_[key_message] =
+                publishers_[msg_name] =
                         this->fish_->create_publisher(*node_, topic_name, msg_name, 20, rclcpp::PublisherOptions{});
+
+                this->dbc_ros_message_name_mappings_.emplace(key_message, std::move(msg_name));
+                for (const auto& [signal_name, signal] : *value_message.GetSignals()) {
+                    dbc_ros_signal_name_mappings_.emplace(signal_name, std::move(dbc_signal_name_to_ros(signal_name)));
+                }
+            } catch (class_loader::LibraryLoadException& e) {
+                RCLCPP_FATAL_STREAM(
+                        node_->get_logger(), "Failed to load library containing message type '" << msg_name << "'\n"
+                                                                                                << e.what()
+                );
+                throw;
+            } catch (ros_babel_fish::BabelFishException& e) {
+                RCLCPP_WARN_STREAM(
+                        node_->get_logger(), "Could not find message type for message '" << msg_name << "'\n"
+                                                                                         << e.what()
+                );
+            }
+        }
+    }
+
+    void BabelBridge::Impl::configureSubscribers(const std::string& msg_topic_prefix) {
+        // iterate over the dbc to spawn an equal amount of publishers
+        for (auto [key_message, value_message] : dbc_name_msg_map_) {
+            std::string msg_name =
+                    (std::ostringstream{} << msg_package_ << "/msg/" << dbc_message_name_to_ros(key_message)).str();
+            RCLCPP_DEBUG(node_->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
+            RCLCPP_DEBUG(node_->get_logger(), "Attempting to load '%s'", msg_name.c_str());
+            try {
+                // There is a missing @throws marker in the documentation for ros_babel_fish:::BabelFish::create_publisher, but it
+                //      raises BabbleFishException if the type cannot be found
+                std::string topic_name =
+                        (std::ostringstream{} << msg_topic_prefix
+                                              << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
+                                              << sensor_name_ << '/' << key_message << "/tx")
+                                .str();
+                this->subscribers_[dbc_message_name_to_ros(key_message)] = this->fish_->create_subscription(
+                        *node_, topic_name, msg_name, 20,
+                        [this](ros_babel_fish::CompoundMessage::UniquePtr MSG) { txFrame(std::move(MSG)); }
+                );
+                this->ros_msg_to_ids_[msg_name] = value_message.GetId();
             } catch (class_loader::LibraryLoadException& e) {
                 RCLCPP_FATAL_STREAM(
                         node_->get_logger(), "Failed to load library containing message type '" << msg_name << "'\n"
@@ -240,3 +253,163 @@ namespace ros2_j1939_babbler {
     // }
 
 } // namespace ros2_j1939_babbler
+
+namespace {
+    /**
+     * @brief Different lengths of integers which are available for use in ROS messages.
+     */
+    enum class IntegerLengths { b8, b16, b32, b64 };
+
+    void putSignalInRosMessage(
+            ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
+            const std::string& ros_signal_name
+    ) {
+        // can_signal can't be const because GetInitialValue isn't const qualified
+        switch (can_signal.GetDataType()) {
+            case NewEagle::INT:
+                RCLCPP_DEBUG(
+                        logger, "Processing integer field: signed:%s, raw:%f, scale:%f, length:%u, offset:%f, result:%f",
+                        can_signal.GetSign() == NewEagle::SIGNED ? "Y" : "N", can_signal.GetInitialValue(),
+                        can_signal.GetGain(), can_signal.GetDlc(), can_signal.GetOffset(), can_signal.GetResult()
+                );
+                // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
+                switch (ceil_bits(can_signal.GetDlc())) {
+                    case IntegerLengths::b8:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            ros_msg[ros_signal_name] = static_cast<int8_t>(can_signal.GetResult());
+                        } else {
+                            ros_msg[ros_signal_name] = static_cast<uint8_t>(can_signal.GetResult());
+                        }
+                        break;
+                    case IntegerLengths::b16:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            ros_msg[ros_signal_name] = static_cast<int16_t>(can_signal.GetResult());
+                        } else {
+                            ros_msg[ros_signal_name] = static_cast<uint16_t>(can_signal.GetResult());
+                        }
+                        break;
+                    case IntegerLengths::b32:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            ros_msg[ros_signal_name] = static_cast<int32_t>(can_signal.GetResult());
+                        } else {
+                            ros_msg[ros_signal_name] = static_cast<uint32_t>(can_signal.GetResult());
+                        }
+                        break;
+                    case IntegerLengths::b64:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            ros_msg[ros_signal_name] = static_cast<int64_t>(can_signal.GetResult());
+                        } else {
+                            ros_msg[ros_signal_name] = static_cast<uint64_t>(can_signal.GetResult());
+                        }
+                        break;
+                }
+                break;
+            case NewEagle::FLOAT:
+                // This is dumb, but can_dbc_parser is handling this awkwardly
+                // Babel fish won't let us put a double in a float32 field, but can_dbc_parser always returns double even if underlying data is supposed to be float32
+                // So we cast the result from can_dbc_parser to float before we insert into the field, and call it a day
+                ros_msg[ros_signal_name] = static_cast<float>(can_signal.GetResult());
+                RCLCPP_DEBUG(
+                        logger, "Processing float field: raw:%f, scale:%f, offset:%f, result:%f",
+                        can_signal.GetInitialValue(), can_signal.GetGain(), can_signal.GetOffset(), can_signal.GetResult()
+                );
+                break;
+            case NewEagle::DOUBLE:
+                ros_msg[ros_signal_name] = can_signal.GetResult();
+                RCLCPP_DEBUG(
+                        logger, "Processing double field: raw:%f, scale:%f, offset:%f, result:%f",
+                        can_signal.GetInitialValue(), can_signal.GetGain(), can_signal.GetOffset(), can_signal.GetResult()
+                );
+                break;
+        }
+    }
+
+    void putSignalInCanMessage(
+            const ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
+            const std::string& ros_signal_name
+    ) {
+        switch (can_signal.GetDataType()) {
+            case NewEagle::INT:
+                // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
+                switch (ceil_bits(can_signal.GetDlc())) {
+                    case IntegerLengths::b8:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int8_t>>().getValue()
+                            );
+                        } else {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint8_t>>().getValue()
+                            );
+                        }
+                        break;
+                    case IntegerLengths::b16:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int16_t>>().getValue()
+                            );
+                        } else {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint16_t>>().getValue()
+                            );
+                        }
+                        break;
+                    case IntegerLengths::b32:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int32_t>>().getValue()
+                            );
+                        } else {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint32_t>>().getValue()
+                            );
+                        }
+                        break;
+                    case IntegerLengths::b64:
+                        if (can_signal.GetSign() == NewEagle::SIGNED) {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int64_t>>().getValue()
+                            );
+                        } else {
+                            can_signal.SetResult(
+                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint64_t>>().getValue()
+                            );
+                        }
+                        break;
+                }
+                can_signal.SetInitialValue((can_signal.GetResult() - can_signal.GetOffset()) / can_signal.GetGain());
+                RCLCPP_DEBUG(
+                        logger, "Pushed integer field: signed:%s, scale:%f, length:%u, offset:%f, result:%f",
+                        can_signal.GetSign() == NewEagle::SIGNED ? "Y" : "N", can_signal.GetGain(), can_signal.GetDlc(),
+                        can_signal.GetOffset(), can_signal.GetResult()
+                );
+                break;
+            case NewEagle::FLOAT:
+                can_signal.SetResult(ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<float>>().getValue());
+                RCLCPP_DEBUG(
+                        logger, "Pushed float field: scale:%f, offset:%f, result:%f", can_signal.GetGain(),
+                        can_signal.GetOffset(), can_signal.GetResult()
+                );
+                break;
+            case NewEagle::DOUBLE:
+                can_signal.SetResult(ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<double>>().getValue());
+                RCLCPP_DEBUG(
+                        logger, "Pushed double field: scale:%f, offset:%f, result:%f", can_signal.GetGain(),
+                        can_signal.GetOffset(), can_signal.GetResult()
+                );
+                break;
+        }
+    }
+
+    /**
+     * @brief Determines the ROS integer type needed to hold an integer of a certain bit length.
+     * @param bit_length the number of bits the integer to store is composed of
+     */
+    IntegerLengths ceil_bits(const uint8_t bit_length) {
+        if (bit_length <= 8) { return IntegerLengths::b8; }
+        if (bit_length <= 16) { return IntegerLengths::b16; }
+        if (bit_length <= 32) { return IntegerLengths::b32; }
+        if (bit_length <= 64) { return IntegerLengths::b64; }
+        throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
+    }
+} // namespace

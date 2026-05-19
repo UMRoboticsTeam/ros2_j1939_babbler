@@ -1,5 +1,5 @@
 /*
-* Copyright 2026 University of Manitoba Robotics Team
+ * Copyright 2026 University of Manitoba Robotics Team
  * Noah Reeder
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,6 +54,15 @@ namespace ros2_j1939_babbler {
         void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
 
         /**
+         * @brief Handle an outgoing CAN frame.
+         *
+         * If the message is present in the DBC file, determines converts it to a CAN message and sends it to the bus.
+         *
+         * @param MSG ROS message to handle
+         */
+        void txFrame(ros_babel_fish::CompoundMessage::UniquePtr MSG);
+
+        /**
          * @brief Checks the messages in the DBC and creates a publisher for each one.
          *
          * For every message in the DBC which has an associated ROS type, a publisher is created with a topic following the
@@ -63,10 +72,56 @@ namespace ros2_j1939_babbler {
          */
         void configurePublishers(const std::string& msg_topic_prefix);
 
+        /**
+         * @brief Checks the messages in the DBC and creates a subscriber for each one.
+         *
+         * For every message in the DBC which has an associated ROS type, a subscriber is created with a topic following the
+         * pattern `msg_topic_prefix/sensor_name/key_message/tx`.
+         *
+         * @param msg_topic_prefix prefix to apply before message topics
+         */
+        void configureSubscribers(const std::string& msg_topic_prefix);
+
     private:
         std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
         ros_babel_fish::BabelFish::UniquePtr fish_; // Babelfish instance for loading/populating message definitions
-        std::map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // Lookup publisher from ROS message name
+        std::unordered_map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // Lookup publisher from ROS message name TODO: true?
+        std::unordered_map<std::string, ros_babel_fish::BabelFishSubscription::SharedPtr> subscribers_; // Lookup subscriber from ROS message name
+        std::unordered_map<std::string, std::uint32_t> ros_msg_to_ids_; // Lookup CAN message ID from ROS message type
+        std::unordered_map<std::string, std::string> dbc_ros_message_name_mappings_;
+        std::unordered_map<std::string, std::string> dbc_ros_signal_name_mappings_;
+
+        /**
+            * @brief Strips characters other than [A-Za-z0-9].
+            * @return the modified string
+            */
+        static std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
+         std::string result;
+         result.reserve(dbc_message_name.size());
+         std::copy_if(
+                 dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result),
+                 [](const unsigned char& c) { return std::isalnum(c); }
+         );
+         return result;
+        }
+
+        /**
+         * @brief Brings characters to lowercase and strips other than [a-z0-9_]
+         * @return
+         */
+        static std::string dbc_signal_name_to_ros(const std::string& dbc_signal_name) {
+         // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
+         std::string result;
+         result.reserve(dbc_signal_name.size());
+         std::copy_if(
+                 dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result),
+                 [](const unsigned char& c) { return std::isalnum(c) || c == '_'; }
+         );
+         std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char& c) {
+             return std::tolower(c);
+         });
+         return result;
+        }
     };
 } // namespace ros2_j1939_babbler
 

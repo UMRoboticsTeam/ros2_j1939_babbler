@@ -15,6 +15,8 @@ import yaml
 
 def generate_launch_description():
 
+    log_level = LaunchConfiguration('log_level')
+
     #### Socketcan Receiver CAN0 Config ####
 
     _CAN_PARAMS_FILE = os.path.join(
@@ -135,7 +137,7 @@ def generate_launch_description():
            {'dbw_dbc_file': generic_can_dbc_path}
            ],
         output='screen',
-        # arguments=["--ros-args", "--log-level", "debug"]
+        arguments=['--ros-args', '--log-level', log_level]
         )
 
 
@@ -143,6 +145,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('auto_configure', default_value='true'),
         DeclareLaunchArgument('auto_activate', default_value='true'),
+        DeclareLaunchArgument('log_level', default_value='info'),
         socket_can_sender_node,
         socket_can_sender_configure_event_handler,
         socket_can_sender_activate_event_handler,
