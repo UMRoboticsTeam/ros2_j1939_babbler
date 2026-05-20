@@ -85,6 +85,7 @@ namespace ros2_j1939_babbler {
                                       << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
                                       << sensor_name_)
                         .str(),
+                "",
                 10
         );
     }

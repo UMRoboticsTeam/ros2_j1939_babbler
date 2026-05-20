@@ -4,9 +4,14 @@ project(ros2_j1939_babbler_msgs)
 set(Python3_EXECUTABLE python)
 set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc")
 
-set(MSGS_DIR "${CMAKE_CURRENT_BUILD_DIR}/msg/")
-set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/type_conversion.hpp")
+set(MSGS_DIR "${CMAKE_CURRENT_BINARY_DIR}/msg/")
+set(GENERATED_HEADER_OUTPUT_FOLDER "${CMAKE_CURRENT_BINARY_DIR}/include/${PROJECT_NAME}")
+set(GENERATED_SOURCE_OUTPUT_FOLDER "${CMAKE_CURRENT_BINARY_DIR}/src")
+
+set(TYPE_CONVERSION_HEADER_PATH "${GENERATED_HEADER_OUTPUT_FOLDER}/type_conversion.hpp")
+set(C_TYPE_DEFINITIONS_HEADER_PATH "${GENERATED_HEADER_OUTPUT_FOLDER}/can_message_types.h")
 set(TYPE_CONVERSION_HELPERS_HEADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/type_conversion_helpers.hpp")
+set(C_TYPE_DEFINITIONS_SOURCE_PATH "${GENERATED_SOURCE_OUTPUT_FOLDER}/can_message_types.c")
 
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,15 +19,17 @@ endif ()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_auto REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
-# Run our python script to generate the msg definitions
+# Run our python script to generate the ROS message definitions and conversion functions
 execute_process(
         COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/MessageGenerator.py
-        "${DBC_PATH}" "${MSGS_DIR}" "${TYPE_CONVERSION_HEADER_PATH}")
+        "${DBC_PATH}" "${MSGS_DIR}" "${TYPE_CONVERSION_HEADER_PATH}"
+        "${GENERATED_HEADER_OUTPUT_FOLDER}" "${GENERATED_SOURCE_OUTPUT_FOLDER}")
 
 # Tell CMake that it needs to reconfigure if the DBC file changes
 # This is because the msgs list (and the rosidl target list) is generated at configure time not build time
@@ -36,6 +43,11 @@ file(GLOB msg_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS "${
 rosidl_generate_interfaces(${PROJECT_NAME}
         "${msg_files}"
         DEPENDENCIES std_msgs builtin_interfaces
+)
+
+# Compile our C type definitions in with the ROS messages lib
+target_sources(${PROJECT_NAME} PRIVATE
+        ${C_TYPE_DEFINITIONS_SOURCE_PATH}
 )
 
 if (BUILD_TESTING)
@@ -55,7 +67,7 @@ install(
         DESTINATION share/${PROJECT_NAME}/
 )
 install(
-        FILES "${TYPE_CONVERSION_HEADER_PATH}" "${TYPE_CONVERSION_HELPERS_HEADER_PATH}"
+        FILES "${TYPE_CONVERSION_HEADER_PATH}" "${TYPE_CONVERSION_HELPERS_HEADER_PATH}" "${C_TYPE_DEFINITIONS_HEADER_PATH}"
         DESTINATION include/${PROJECT_NAME}/${PROJECT_NAME}
 )
 
