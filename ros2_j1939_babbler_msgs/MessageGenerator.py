@@ -326,7 +326,7 @@ if __name__ == "__main__":
     convert_files(db, msg_export_path, type_conversion_header_export_path)
     header, source, _, _ = cantools.database.can.c_source.generate(
         db,
-        "",
+        C_TYPE_DEFINITION_FILE_BASENAME,
         c_type_def_header_export_folder,
         c_type_def_source_export_folder,
         "",

@@ -12,6 +12,7 @@ endif()
 
 # Fixes intellisense not finding ros2 headers https://youtrack.jetbrains.com/issue/CPP-29747/Certain-ROS2-package-headers-missing-from-Intellisense-when-using-a-Docker-toolchain
 include_directories(SYSTEM /opt/ros/$ENV{ROS_DISTRO}/include)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # find dependencies
 find_package(ament_cmake_auto REQUIRED)
@@ -31,7 +32,9 @@ ament_auto_add_library(
         src/static_bridge_impl.cpp
 )
 
-ament_export_dependencies(can_dbc_parser)
+ament_export_dependencies(can_dbc_parser ros2_j1939_babbler_msgs)
+
+target_link_libraries(${PROJECT_NAME} ${ros2_j1939_babbler_msgs_LIBRARIES})
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-function)
 

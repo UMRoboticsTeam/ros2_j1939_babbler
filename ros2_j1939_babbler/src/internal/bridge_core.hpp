@@ -67,8 +67,8 @@ namespace ros2_j1939_babbler {
             frame_id_ = node_->declare_parameter<std::string>("frame_id", "");
             sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "");
             device_ID_ = node_->declare_parameter<uint8_t>("device_ID", 0);
-            sub_topic_can_ = node_->declare_parameter<std::string>("can_sub_topic", "");
-            pub_topic_can_ = node_->declare_parameter<std::string>("can_pub_topic", "");
+            can_sub_topic_ = node_->declare_parameter<std::string>("can_sub_topic", "/from_can_bus");
+            can_pub_topic_ = node_->declare_parameter<std::string>("can_pub_topic", "/to_can_bus");
             msg_topic_prefix_ = node_->declare_parameter<std::string>("msg_topic_prefix", "");
             auto msg_filter_range = rcl_interfaces::msg::ParameterDescriptor{};
             msg_filter_range.integer_range = {
@@ -92,8 +92,8 @@ namespace ros2_j1939_babbler {
             RCLCPP_INFO(node_->get_logger(), "frame_id: %s", frame_id_.c_str());
             RCLCPP_INFO(node_->get_logger(), "sensor_name: %s", sensor_name_.c_str());
             RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
-            RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", sub_topic_can_.c_str());
-            RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", pub_topic_can_.c_str());
+            RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
+            RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
 
             // setup dbc database - brings in j1939 standard
             this->setupDatabase();
@@ -101,11 +101,11 @@ namespace ros2_j1939_babbler {
 
             // setup subscriber, bind rxFrame
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
-                    this->sub_topic_can_, 500,
+                    this->can_sub_topic_, 500,
                     [this](const can_msgs::msg::Frame::SharedPtr msg) { rxFrame(std::forward<decltype(msg)>(msg)); }
             );
             this->pub_can_ =
-                    node_->create_publisher<can_msgs::msg::Frame>(this->pub_topic_can_, 500, rclcpp::PublisherOptions{});
+                    node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
 
             RCLCPP_DEBUG(node_->get_logger(), "Generic Can Driver Core configured!");
         }
@@ -212,8 +212,8 @@ namespace ros2_j1939_babbler {
         std::string sensor_name_;  // Name of your sensor / device (e.g. engine ECU)
         uint8_t device_ID_; // J1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
         std::string device_ID_str_;             // String representation of device_ID_
-        std::string sub_topic_can_;             // Topic to listen for ros2_socketcan messages on
-        std::string pub_topic_can_;             // Topic to send outgoing ros2_socketcan messages on
+        std::string can_sub_topic_;             // Topic to listen for ros2_socketcan messages on
+        std::string can_pub_topic_;             // Topic to send outgoing ros2_socketcan messages on
         std::string msg_topic_prefix_;          // Prefix to add to the topic name for each CAN message
         std::vector<int64_t> msg_filter_ids_;   // List of ids messages must match (within a mask) to be processed
         std::vector<int64_t> msg_filter_masks_; // Parallel list of masks to apply to the filter ids

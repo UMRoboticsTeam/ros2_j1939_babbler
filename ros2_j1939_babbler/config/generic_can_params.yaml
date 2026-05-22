@@ -1,9 +1,11 @@
-frame_id: "body"               # physical location of your device
-sensor_name: "main_ecu"         # name of your sensor / device
-device_ID: 00                   # last two hex number of the CAN ID of your device (in decimal notation)
-can_interface: "vcan0"          # name of the can interface
-can_sub_topic: "/from_can_bus"  # ros2_socketcan read-from-can topic
-can_pub_topic: "/to_can_bus"    # ros2_socketcan write-to-can topic
-msg_package: "ros2_j1939_babbler_msgs" # package containing message definitions
+/**:
+  ros__parameters:
+    frame_id: "body"               # physical location of your device
+    sensor_name: "main_ecu"         # name of your sensor / device
+    device_ID: 00                   # last two hex number of the CAN ID of your device (in decimal notation)
+    can_interface: "vcan0"          # name of the can interface
+    can_sub_topic: "/from_can_bus"  # ros2_socketcan read-from-can topic
+    can_pub_topic: "/to_can_bus"    # ros2_socketcan write-to-can topic
+    msg_package: "ros2_j1939_babbler_msgs" # package containing message definitions
 
-dbc_file: "Messages.dbc"          # name of the user-provide dbc file under /launch
+    dbw_dbc_file: "/ws2/ros2_j1939_babbler/ros2_j1939_babbler_msgs/Messages.dbc"          # name of the user-provide dbc file under /launch

@@ -58,8 +58,9 @@ namespace ros2_j1939_babbler {
          * Topics follow the pattern `msg_topic_prefix/sensor_name/key_message`.
          *
          * @param msg_topic_prefix prefix to apply before message topics
+         * @param transmitter_topic topic to send outgoing CAN messages to
          */
-        void configurePublishers(const std::string& msg_topic_prefix);
+        void configurePublishers(const std::string& msg_topic_prefix, const std::string& transmitter_topic);
 
     private:
         // Structure holding publishers and handling dispatching messages to them

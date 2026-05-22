@@ -46,7 +46,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 # Compile our C type definitions in with the ROS messages lib
-target_sources(${PROJECT_NAME} PRIVATE
+target_sources(${PROJECT_NAME}__rosidl_typesupport_cpp PRIVATE
         ${C_TYPE_DEFINITIONS_SOURCE_PATH}
 )
 

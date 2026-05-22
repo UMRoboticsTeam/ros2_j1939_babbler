@@ -29,8 +29,7 @@ namespace {
 namespace ros2_j1939_babbler {
 
     StaticBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
-        // automatically configure publishers
-        this->configurePublishers(msg_topic_prefix_);
+        this->configurePublishers(msg_topic_prefix_, can_pub_topic_);
         RCLCPP_INFO(node_->get_logger(), "Setup publishers!");
     }
 
@@ -77,7 +76,7 @@ namespace ros2_j1939_babbler {
 
     // BEGIN MANAGEMENT FUNCTIONS //
 
-    void StaticBridge::Impl::configurePublishers(const std::string& msg_topic_prefix) {
+    void StaticBridge::Impl::configurePublishers(const std::string& msg_topic_prefix, const std::string& transmitter_topic) {
         // Create the runtime dispatch table
         this->publisher_dispatch_table_ = std::make_unique<ros2_j1939_babbler_msgs::DispatchTable>(
                 node_,
@@ -85,7 +84,7 @@ namespace ros2_j1939_babbler {
                                       << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
                                       << sensor_name_)
                         .str(),
-                "",
+                transmitter_topic,
                 10
         );
     }
