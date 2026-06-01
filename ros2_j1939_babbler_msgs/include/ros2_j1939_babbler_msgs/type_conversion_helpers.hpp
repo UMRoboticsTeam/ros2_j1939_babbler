@@ -215,8 +215,9 @@ namespace ros2_j1939_babbler_msgs
          */
         void runtime_dispatch(const uint32_t pgn, const std::unordered_map<std::string, double>& fields, std_msgs::msg::Header header, const uint8_t src_addr)
         {
-            bool handled = ((pgn == PGNs ? (dispatch<PGNs>(fields, std::move(header), src_addr), true) : false) || ...); // Fold expression will expand into a giant switch
-            assert(handled);
+            // Fold expression will expand into a giant switch
+            bool handled = ((pgn == PGNs ? (dispatch<PGNs>(fields, std::move(header), src_addr), true) : false) || ...);
+            (void*)handled; // May want to use this for logging or something in the future
         }
 
         /*
