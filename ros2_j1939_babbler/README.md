@@ -71,7 +71,7 @@ All you need is a device and a DBC!
 
  1. Can you launch this node **multiple** times?
        
-       > Yes. Make sure to edit the deivce name, frame, and ID in each node's config so that it
+       > Yes. Make sure to edit the device name, frame, and ID in each node's config so that it
        parses the correct device
 
 2. What if I have **multiple** CAN lines?

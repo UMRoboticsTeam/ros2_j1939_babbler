@@ -8,15 +8,22 @@ set(MSGS_DIR "${CMAKE_CURRENT_BUILD_DIR}/msg/")
 set(TYPE_CONVERSION_HEADER_PATH "${CMAKE_CURRENT_BUILD_DIR}/type_conversion.hpp")
 set(TYPE_CONVERSION_HELPERS_HEADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/type_conversion_helpers.hpp")
 
+set(CMAKE_CXX_STANDARD 14)
+
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif ()
 
 # find dependencies
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+        builtin_interfaces
+        std_msgs
+        rosidl_default_generators
+)
 find_package(ament_cmake REQUIRED)
-find_package(builtin_interfaces REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
+foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
+    find_package(${Dependency} REQUIRED)
+endforeach()
 
 # Run our python script to generate the msg definitions
 execute_process(

@@ -83,64 +83,11 @@ namespace ros2_j1939_babbler {
                 node_,
                 (std::ostringstream{} << msg_topic_prefix
                                       << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
-                                      << sensor_name_)
-                        .str(),
+                                      << sensor_name_).str(),
                 10
         );
     }
 
     // END MANAGEMENT FUNCTIONS //
-
-    // TODO:Arturo - Look through this and make sure it's the standard way of renaming CAN devices
-    // also, this could just be its own .log file or something idk
-
-    // void GenericCanDriver::Impl::txRename(
-    //   const std::array<uint8_t, 8UL> name, const uint8_t new_source_address)
-    // {
-    //   std::array<uint8_t, 8UL> BAM_data_out = {0x20u, 0x09u, 0x00u, 0x02u, 0xFFu, 0xD8u, 0xFEu, 0x00u};
-    //   can_msgs::msg::Frame BAM_frame_out;
-    //   uint32_t j1939_id = 0x1CECFF00u;
-    //   BAM_frame_out.header.stamp = node_->now();
-    //   BAM_frame_out.header.frame_id = "ROS2_command";
-    //   BAM_frame_out.id = j1939_id;
-    //   BAM_frame_out.is_rtr = false;
-    //   BAM_frame_out.is_extended = true;
-    //   BAM_frame_out.is_error = false;
-    //   BAM_frame_out.dlc = 8;
-    //   BAM_frame_out.data = BAM_data_out;
-
-    //   std::array<uint8_t, 8UL> name_data_out_1 = {0x01u, name[0], name[1], name[2],
-    //     name[3], name[4], name[5], name[6]};
-    //   can_msgs::msg::Frame name_frame_out_1;
-    //   j1939_id = 0x1CEBFF00u;
-    //   name_frame_out_1.header.stamp = node_->now();
-    //   name_frame_out_1.header.frame_id = "ROS2_command";
-    //   name_frame_out_1.id = j1939_id;
-    //   name_frame_out_1.is_rtr = false;
-    //   name_frame_out_1.is_extended = true;
-    //   name_frame_out_1.is_error = false;
-    //   name_frame_out_1.dlc = 8;
-    //   name_frame_out_1.data = name_data_out_1;
-
-    //   std::array<uint8_t, 8UL> name_data_out_2 = {0x02u, name[7], new_source_address, 0xFF, 0xFF, 0xFF,
-    //     0xFF, 0xFF};
-    //   can_msgs::msg::Frame name_frame_out_2;
-    //   j1939_id = 0x1CEBFF00u;
-    //   name_frame_out_2.header.stamp = node_->now();
-    //   name_frame_out_2.header.frame_id = "ROS2_command";
-    //   name_frame_out_2.id = j1939_id;
-    //   name_frame_out_2.is_rtr = false;
-    //   name_frame_out_2.is_extended = true;
-    //   name_frame_out_2.is_error = false;
-    //   name_frame_out_2.dlc = 8;
-    //   name_frame_out_2.data = name_data_out_2;
-
-    //   pub_can_->publish(BAM_frame_out);
-    //   rclcpp::sleep_for(std::chrono::milliseconds(100));
-    //   pub_can_->publish(name_frame_out_1);
-    //   rclcpp::sleep_for(std::chrono::milliseconds(100));
-    //   pub_can_->publish(name_frame_out_2);
-    //   RCLCPP_INFO(node_->get_logger(), "Published renaming thing!!!!!!!! %d", new_source_address);
-    // }
 
 } // namespace ros2_j1939_babbler

@@ -79,10 +79,9 @@ namespace ros2_j1939_babbler {
 
             if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
                 throw std::invalid_argument((std::ostringstream{}
-                                             << "Message filter must have same number of IDs and masks, found "
-                                             << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
-                                             << " masks")
-                                                    .str());
+                    << "Message filter must have same number of IDs and masks, found "
+                    << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
+                    << " masks").str());
             }
 
             device_ID_str_ = std::to_string(device_ID_);
@@ -195,53 +194,8 @@ namespace ros2_j1939_babbler {
         }
 
         /**
-         * @brief functions that takes list of full addresses (such as 0x0CEEFFA1) as defined in params
-         * yaml and attempts and address claim attack. It adopts the lowest value name and publishes it on
-         * that address, forcing the target device on that address to either stop publishing or move to a
-         * different address, depending on its internal logic.
-        */
-        void
-        generateAddressClaimAttackMsg(can_msgs::msg::Frame::SharedPtr MSG, const std::vector<uint32_t> source_addresses) {
-            // we go through each address given in the list
-            for (uint32_t address : source_addresses) {
-                // we add the source address (target of the claim attack) to a 'name declaration' message
-                address += 0x18EEFF00;
-                // by sending this message with only 0s, our name takes priority,
-                // and the competing device stops publishing
-                std::array<uint8_t, 8UL> claim_data = { 0x00u, 0x00u, 0x00u, 0x00u, 0x00, 0x00, 0x00, 0x00u };
-
-                // then we just stuff the can frame with all our data
-                MSG->header.stamp = node_->now();
-                MSG->header.frame_id = "can";
-                MSG->id = address;
-                MSG->is_rtr = false;
-                MSG->is_extended = true;
-                MSG->is_error = false;
-                MSG->dlc = 8;
-                MSG->data = claim_data;
-            }
-        }
-
-        /**
-         * @brief formats data nicely for use in CAN frames
+         * @brief check if an incoming message passes the message filters
          */
-        void createDataArray(
-                const std::vector<uint16_t> data_in, const std::vector<uint16_t> data_lengths,
-                std::array<uint8_t, 8UL>& data_out
-        ) {
-            uint64_t data_concatenated = 0;
-            uint64_t data_mask = 0x00000000000000FF;
-            int size = data_in.size();
-            for (int i = 0; i < size; i++) {
-                data_concatenated = data_concatenated << data_lengths[size - 1 - i];
-                data_concatenated += data_in[size - 1 - i];
-            }
-            for (int i = 0; i < 8; i++) { data_out[i] = (data_mask & data_concatenated >> 8 * i); }
-        }
-
-        /**
-        * @brief check if an incoming message passes the message filters
-        */
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
