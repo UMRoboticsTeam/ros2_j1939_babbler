@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.8)
 project(ros2_j1939_babbler_msgs)
 
+# This can be overridden by specifying "-DDBC_PATH=..." when calling cmake
+set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc" CACHE)
+
 set(Python3_EXECUTABLE python)
-set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc")
 
 set(MSGS_DIR "${CMAKE_CURRENT_BINARY_DIR}/msg/")
 set(GENERATED_HEADER_OUTPUT_FOLDER "${CMAKE_CURRENT_BINARY_DIR}/include/${PROJECT_NAME}")
