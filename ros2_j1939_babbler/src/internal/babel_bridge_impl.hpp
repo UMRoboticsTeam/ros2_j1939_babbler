@@ -25,8 +25,25 @@
 
 #include <ros_babel_fish/babel_fish.hpp>
 
+#include "dbc/dbc_parser.h"
+
+#include "dbc/dbc_parser.h"
 
 namespace ros2_j1939_babbler {
+    class DbcParser {
+        std::unordered_map<uint32_t, std::vector<std::string>> signals;
+
+        friend void tag_invoke(
+        can::def_sg_cpo, DbcParser &this_,
+        uint32_t msg_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
+        unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
+        double sg_factor, double sg_offset, double sg_min, double sg_max,
+        std::string sg_unit, std::vector<size_t> receiver_ords
+        ) {
+            this_.signals[msg_id].push_back(sg_name); // add the signal name to the vector for the message id
+        }
+    };
+
     /**
      * @brief Implementation of the runtime bridge, hidden from users through PIMPL pattern.
      */
@@ -90,6 +107,7 @@ namespace ros2_j1939_babbler {
         std::unordered_map<std::string, std::uint32_t> ros_msg_to_ids_; // Lookup CAN message ID from ROS message type
         std::unordered_map<std::string, std::string> dbc_ros_message_name_mappings_;
         std::unordered_map<std::string, std::string> dbc_ros_signal_name_mappings_;
+        DbcParser dbc_parser_;
 
         /**
             * @brief Strips characters other than [A-Za-z0-9].

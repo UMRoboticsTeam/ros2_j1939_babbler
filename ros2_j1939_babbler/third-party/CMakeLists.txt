@@ -3,9 +3,9 @@ project(mireo_can_utils)
 
 # ********** Setup CMake **********
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 20)
+# Require C++20
+if(CMAKE_CXX_STANDARD LESS 20)
+    message(SEND_ERROR "${PROJECT_NAME} requires C++20 features")
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")

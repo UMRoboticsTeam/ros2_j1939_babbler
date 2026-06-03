@@ -41,6 +41,7 @@ namespace ros2_j1939_babbler {
         msg_package_ = node_->declare_parameter<std::string>("msg_package", "");
 
         fish_ = ros_babel_fish::BabelFish::make_unique();
+        can::parse_dbc(dbw_dbc_file_, std::ref(dbc_parser_));
 
         // automatically configure publishers
         this->configurePublishers(msg_topic_prefix_);

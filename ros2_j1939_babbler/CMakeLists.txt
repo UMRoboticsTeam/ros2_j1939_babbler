@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(ros2_j1939_babbler)
 
-# Default to C++17
+# Default to C++20
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -22,6 +22,9 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(ros2_j1939_babbler_msgs REQUIRED)
 
+# Build third party libraries
+add_subdirectory(third-party)
+
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(
@@ -34,7 +37,10 @@ ament_auto_add_library(
 
 ament_export_dependencies(can_dbc_parser ros2_j1939_babbler_msgs)
 
-target_link_libraries(${PROJECT_NAME} ${ros2_j1939_babbler_msgs_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}
+        ${ros2_j1939_babbler_msgs_LIBRARIES}
+        mireo_can_utils
+)
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-function)
 
