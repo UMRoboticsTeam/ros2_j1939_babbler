@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(ros2_j1939_babbler_msgs)
 
 # This can be overridden by specifying "-DDBC_PATH=..." when calling cmake
-set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc" CACHE)
+set(DBC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Messages.dbc" CACHE STRING "Path to symbol file to generate ROS messages for")
 
 set(Python3_EXECUTABLE python)
 
@@ -48,7 +48,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 # Compile our C type definitions in with the ROS messages lib
-target_sources(${PROJECT_NAME}__rosidl_typesupport_cpp PRIVATE
+target_sources(${PROJECT_NAME} PRIVATE
         ${C_TYPE_DEFINITIONS_SOURCE_PATH}
 )
 
