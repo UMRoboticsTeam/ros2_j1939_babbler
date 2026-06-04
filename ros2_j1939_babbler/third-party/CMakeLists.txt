@@ -32,6 +32,9 @@ set(public_headers # These files will be installed with the library
         mireo_can_utils/dbc/dbc_parser.h
         mireo_can_utils/any/any.h
         mireo_can_utils/any/tag_invoke.h
+        mireo_can_utils/can/can_codec.h
+        mireo_can_utils/can/can_kernel.h
+        mireo_can_utils/v2c/v2c_transcoder.h
 )
 target_include_directories(${PROJECT_NAME} PUBLIC # Everything in this folder will be available during building
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mireo_can_utils/>"

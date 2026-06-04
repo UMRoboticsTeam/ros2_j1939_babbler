@@ -25,24 +25,59 @@
 
 #include <ros_babel_fish/babel_fish.hpp>
 
-#include "dbc/dbc_parser.h"
+#include "v2c/v2c_transcoder.h"
 
-#include "dbc/dbc_parser.h"
+#include <cassert>
 
 namespace ros2_j1939_babbler {
-    class DbcParser {
-        std::unordered_map<uint32_t, std::vector<std::string>> signals;
+    struct PhysicalValue {
+        can::sig_codec codec;
+        can::tr_signal signal;
+        double factor;
+        double value_offset;
+        unsigned dlc;
+        double min;
+        double max;
+        bool is_signed;
+    };
 
-        friend void tag_invoke(
-        can::def_sg_cpo, DbcParser &this_,
-        uint32_t msg_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
-        unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
-        double sg_factor, double sg_offset, double sg_min, double sg_max,
-        std::string sg_unit, std::vector<size_t> receiver_ords
+    class DbcParser {
+        std::unordered_map<uint32_t, std::unordered_map<std::string, PhysicalValue>> messages;
+
+        inline void tag_invoke(
+            can::def_sg_cpo, DbcParser &this_,
+            uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
+            unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
+            double sg_factor, double sg_offset, double sg_min, double sg_max,
+            std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
         ) {
-            this_.signals[msg_id].push_back(sg_name); // add the signal name to the vector for the message id
+            can::sig_codec codec{sg_start_bit, sg_size, sg_byte_order, sg_sign};
+            can::tr_signal signal{sg_name, codec, std::optional<int64_t>(sg_mux_switch_val)};
+            PhysicalValue value{
+                .codec = codec,
+                .signal{std::move(signal)},
+                .factor = sg_factor,
+                .value_offset = sg_offset,
+                .dlc = sg_size,
+                .min = sg_min,
+                .max = sg_max,
+                .is_signed = sg_sign == '-'
+            };
+            messages[message_id].emplace(sg_name, value);;
+        }
+
+        inline void tag_invoke(
+            can::def_sig_valtype_cpo, DbcParser &this_,
+            unsigned msg_id, std::string sg_name, unsigned sg_ext_val_type
+        ) {
+            assert(
+                messages[msg_id].find(sg_name) != messages[msg_id].end() &&
+                "Signal must be defined before its value type is set");
+            messages[msg_id].at(sg_name).signal.value_type(sg_ext_val_type);
         }
     };
+
+
 
     /**
      * @brief Implementation of the runtime bridge, hidden from users through PIMPL pattern.

@@ -22,6 +22,8 @@
 
 #include "internal/babel_bridge_impl.hpp"
 
+#include "can/can_codec.h"
+
 namespace {
     enum class IntegerLengths;
     IntegerLengths ceil_bits(const uint8_t bit_length);
@@ -33,6 +35,13 @@ namespace {
             const ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
             const std::string& ros_signal_name
     );
+    template<typename T>
+    void decodeAndPut(ros_babel_fish::Message &ros_signal, uint64_t raw_value,
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, rclcpp::Logger &&logger);
+    template<typename T>
+    void encodeAndPut(const ros_babel_fish::Message &ros_signal,
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data, rclcpp::Logger &&logger);
+    std::string read_file(const std::string& dbc_path);
 } // namespace
 
 namespace ros2_j1939_babbler {
@@ -41,7 +50,7 @@ namespace ros2_j1939_babbler {
         msg_package_ = node_->declare_parameter<std::string>("msg_package", "");
 
         fish_ = ros_babel_fish::BabelFish::make_unique();
-        can::parse_dbc(dbw_dbc_file_, std::ref(dbc_parser_));
+        can::parse_dbc(read_file(dbw_dbc_file_), std::ref(dbc_parser_));
 
         // automatically configure publishers
         this->configurePublishers(msg_topic_prefix_);
@@ -193,7 +202,7 @@ namespace ros2_j1939_babbler {
             } catch (ros_babel_fish::BabelFishException& e) {
                 RCLCPP_WARN_STREAM(
                         node_->get_logger(), "Could not find message type for message '" << msg_name << "'\n"
-                                                                                         << e.what()
+                                        dbc_parser_.find_message()                                                 << e.what()
                 );
             }
         }
@@ -262,146 +271,163 @@ namespace {
     enum class IntegerLengths { b8, b16, b32, b64 };
 
     void putSignalInRosMessage(
-            ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
-            const std::string& ros_signal_name
+            ros_babel_fish::Message& ros_signal, std::array<uint8_t, 8>& can_data, ros2_j1939_babbler::PhysicalValue& can_signal, rclcpp::Logger&& logger
     ) {
+        uint64_t raw = 0;
+        std::memcpy(&raw, &can_data[0], sizeof(raw));
+
         // can_signal can't be const because GetInitialValue isn't const qualified
-        switch (can_signal.GetDataType()) {
-            case NewEagle::INT:
-                RCLCPP_DEBUG(
-                        logger, "Processing integer field: signed:%s, raw:%f, scale:%f, length:%u, offset:%f, result:%f",
-                        can_signal.GetSign() == NewEagle::SIGNED ? "Y" : "N", can_signal.GetInitialValue(),
-                        can_signal.GetGain(), can_signal.GetDlc(), can_signal.GetOffset(), can_signal.GetResult()
+        switch (can_signal.signal.value_type()) {
+            case can::i64:
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Processing signed integer signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
-                // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
-                switch (ceil_bits(can_signal.GetDlc())) {
+                switch (ceil_bits(can_signal.dlc)) {
                     case IntegerLengths::b8:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            ros_msg[ros_signal_name] = static_cast<int8_t>(can_signal.GetResult());
-                        } else {
-                            ros_msg[ros_signal_name] = static_cast<uint8_t>(can_signal.GetResult());
-                        }
+                        decodeAndPut<int8_t>(ros_signal, raw, can_signal, logger);
                         break;
                     case IntegerLengths::b16:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            ros_msg[ros_signal_name] = static_cast<int16_t>(can_signal.GetResult());
-                        } else {
-                            ros_msg[ros_signal_name] = static_cast<uint16_t>(can_signal.GetResult());
-                        }
+                        decodeAndPut<int16_t>(ros_signal, raw, can_signal, logger);
                         break;
                     case IntegerLengths::b32:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            ros_msg[ros_signal_name] = static_cast<int32_t>(can_signal.GetResult());
-                        } else {
-                            ros_msg[ros_signal_name] = static_cast<uint32_t>(can_signal.GetResult());
-                        }
+                        decodeAndPut<int32_t>(ros_signal, raw, can_signal, logger);
                         break;
                     case IntegerLengths::b64:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            ros_msg[ros_signal_name] = static_cast<int64_t>(can_signal.GetResult());
-                        } else {
-                            ros_msg[ros_signal_name] = static_cast<uint64_t>(can_signal.GetResult());
-                        }
+                        decodeAndPut<int64_t>(ros_signal, raw, can_signal, logger);
                         break;
                 }
                 break;
-            case NewEagle::FLOAT:
-                // This is dumb, but can_dbc_parser is handling this awkwardly
-                // Babel fish won't let us put a double in a float32 field, but can_dbc_parser always returns double even if underlying data is supposed to be float32
-                // So we cast the result from can_dbc_parser to float before we insert into the field, and call it a day
-                ros_msg[ros_signal_name] = static_cast<float>(can_signal.GetResult());
-                RCLCPP_DEBUG(
-                        logger, "Processing float field: raw:%f, scale:%f, offset:%f, result:%f",
-                        can_signal.GetInitialValue(), can_signal.GetGain(), can_signal.GetOffset(), can_signal.GetResult()
+            case can::u64:
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Processing unsigned integer signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
+                // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
+                switch (ceil_bits(can_signal.dlc)) {
+                    case IntegerLengths::b8:
+                        decodeAndPut<uint8_t>(ros_signal, raw, can_signal, logger);
+                        break;
+                    case IntegerLengths::b16:
+                        decodeAndPut<uint16_t>(ros_signal, raw, can_signal, logger);
+                        break;
+                    case IntegerLengths::b32:
+                        decodeAndPut<uint32_t>(ros_signal, raw, can_signal, logger);
+                        break;
+                    case IntegerLengths::b64:
+                        decodeAndPut<uint64_t>(ros_signal, raw, can_signal, logger);
+                        break;
+                }
                 break;
-            case NewEagle::DOUBLE:
-                ros_msg[ros_signal_name] = can_signal.GetResult();
-                RCLCPP_DEBUG(
-                        logger, "Processing double field: raw:%f, scale:%f, offset:%f, result:%f",
-                        can_signal.GetInitialValue(), can_signal.GetGain(), can_signal.GetOffset(), can_signal.GetResult()
+            case can::f32:
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Processing float signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
+                decodeAndPut<float>(ros_signal, raw, can_signal, logger);
+                break;
+            case can::f64:
+                RCLCPP_DEBUG_STREAM(
+                     logger,
+                     "Processing double signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
+                     << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                 );
+                decodeAndPut<double>(ros_signal, raw, can_signal, logger);
                 break;
         }
     }
 
     void putSignalInCanMessage(
-            const ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
-            const std::string& ros_signal_name
+            const ros_babel_fish::Message& ros_signal, std::array<uint8_t, 8>& can_data, const ros2_j1939_babbler::PhysicalValue& can_signal, rclcpp::Logger&& logger
     ) {
-        switch (can_signal.GetDataType()) {
-            case NewEagle::INT:
-                // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
-                switch (ceil_bits(can_signal.GetDlc())) {
+        switch (can_signal.signal.value_type()) {
+            case can::i64:
+                switch (ceil_bits(can_signal.dlc)) {
                     case IntegerLengths::b8:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int8_t>>().getValue()
-                            );
-                        } else {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint8_t>>().getValue()
-                            );
-                        }
+                        encodeAndPut<int8_t>(ros_signal, can_signal, can_data, logger);
                         break;
                     case IntegerLengths::b16:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int16_t>>().getValue()
-                            );
-                        } else {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint16_t>>().getValue()
-                            );
-                        }
+                        encodeAndPut<int16_t>(ros_signal, can_signal, can_data, logger);
                         break;
                     case IntegerLengths::b32:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int32_t>>().getValue()
-                            );
-                        } else {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint32_t>>().getValue()
-                            );
-                        }
+                        encodeAndPut<int32_t>(ros_signal, can_signal, can_data, logger);
                         break;
                     case IntegerLengths::b64:
-                        if (can_signal.GetSign() == NewEagle::SIGNED) {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<int64_t>>().getValue()
-                            );
-                        } else {
-                            can_signal.SetResult(
-                                    ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<uint64_t>>().getValue()
-                            );
-                        }
+                        encodeAndPut<int64_t>(ros_signal, can_signal, can_data, logger);
                         break;
                 }
-                can_signal.SetInitialValue((can_signal.GetResult() - can_signal.GetOffset()) / can_signal.GetGain());
-                RCLCPP_DEBUG(
-                        logger, "Pushed integer field: signed:%s, scale:%f, length:%u, offset:%f, result:%f",
-                        can_signal.GetSign() == NewEagle::SIGNED ? "Y" : "N", can_signal.GetGain(), can_signal.GetDlc(),
-                        can_signal.GetOffset(), can_signal.GetResult()
+                break;
+            case can::u64:
+                switch (ceil_bits(can_signal.dlc)) {
+                    case IntegerLengths::b8:
+                        encodeAndPut<uint8_t>(ros_signal, can_signal, can_data, logger);
+                        break;
+                    case IntegerLengths::b16:
+                        encodeAndPut<uint16_t>(ros_signal, can_signal, can_data, logger);
+                        break;
+                    case IntegerLengths::b32:
+                        encodeAndPut<uint32_t>(ros_signal, can_signal, can_data, logger);
+                        break;
+                    case IntegerLengths::b64:
+                        encodeAndPut<uint64_t>(ros_signal, can_signal, can_data, logger);
+                        break;
+                }
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Pushed unsigned integer signal '" << can_signal.signal.name() << "': scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
                 break;
-            case NewEagle::FLOAT:
-                can_signal.SetResult(ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<float>>().getValue());
-                RCLCPP_DEBUG(
-                        logger, "Pushed float field: scale:%f, offset:%f, result:%f", can_signal.GetGain(),
-                        can_signal.GetOffset(), can_signal.GetResult()
+            case can::f32:
+                encodeAndPut<float>(ros_signal, can_signal, can_data, logger);
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Pushed float signal '" << can_signal.signal.name() << "': scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
                 break;
-            case NewEagle::DOUBLE:
-                can_signal.SetResult(ros_msg[ros_signal_name].as<ros_babel_fish::ValueMessage<double>>().getValue());
-                RCLCPP_DEBUG(
-                        logger, "Pushed double field: scale:%f, offset:%f, result:%f", can_signal.GetGain(),
-                        can_signal.GetOffset(), can_signal.GetResult()
+            case can::f64:
+                encodeAndPut<double>(ros_signal, can_signal, can_data, logger);
+                RCLCPP_DEBUG_STREAM(
+                    logger,
+                    "Pushed double signal '" << can_signal.signal.name() << "': scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
                 );
                 break;
         }
     }
 
+    template<typename T>
+    void decodeAndPut(ros_babel_fish::Message &ros_signal, uint64_t raw_value,
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, rclcpp::Logger &&logger) {
+        T data = static_cast<T>(static_cast<double>(raw_value) * can_signal.factor + can_signal.value_offset);
+        if (data < can_signal.min || data > can_signal.max) {
+            RCLCPP_DEBUG_STREAM(
+                logger,
+                "Signal '" << can_signal.signal.name() << "': value=" << data << " is out of range; min=" << can_signal.
+                min << ", max=" << can_signal.max
+            );
+        }
+        ros_signal = data;
+    }
+
+    template<typename T>
+    void encodeAndPut(const ros_babel_fish::Message &ros_signal,
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data, rclcpp::Logger &&logger) {
+        T value = ros_signal.as<ros_babel_fish::ValueMessage<T>>().getValue();
+        if (value < can_signal.min || value > can_signal.max) {
+            RCLCPP_DEBUG_STREAM(
+                logger,
+                "Signal '" << can_signal.signal.name() << "': value=" << value << " is out of range; min=" << can_signal.
+                min << ", max=" << can_signal.max
+            );
+        }
+        T raw_value = (ros_signal.as<ros_babel_fish::ValueMessage<T>>().getValue() - can_signal.value_offset) / can_signal.factor;
+        can_signal.codec(*reinterpret_cast<uint64_t*>(&raw_value), can_data.data());
+    }
     /**
      * @brief Determines the ROS integer type needed to hold an integer of a certain bit length.
      * @param bit_length the number of bits the integer to store is composed of
@@ -412,5 +438,12 @@ namespace {
         if (bit_length <= 32) { return IntegerLengths::b32; }
         if (bit_length <= 64) { return IntegerLengths::b64; }
         throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
+    }
+
+    std::string read_file(const std::string& dbc_path) {
+        std::ifstream dbc_content(dbc_path);
+        std::ostringstream ss;
+        ss << dbc_content.rdbuf();
+        return ss.str();
     }
 } // namespace
