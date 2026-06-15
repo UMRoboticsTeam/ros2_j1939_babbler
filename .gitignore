@@ -1,0 +1,6 @@
+/**/cmake-build-*/
+/**/.idea/
+/output-doxygen/
+/**/build/
+/**/install/
+/**/log/

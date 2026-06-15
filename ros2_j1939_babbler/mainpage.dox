@@ -1,0 +1,13 @@
+/** \mainpage
+This library/executable/project implements XYZ functionality.
+<p>
+This includes:
+    - An example node to illustrate file structure and building
+
+\section example-node-anchor Example Node
+
+A small program to show how to set up a project's file tree.
+
+<hr>
+The Doxygen tagfile for this documentation is available <a href="********** project name **********.tag.xml">here</a>.
+*/

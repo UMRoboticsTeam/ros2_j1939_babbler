@@ -1,119 +1,137 @@
-# generic can driver
-A simple ros2 driver to get human-readable data from a J1939 sensor
+# ROS2 J1939 Babbler
 
-## Motivation
-Reading data from a J1939 sensor is kind of annoying.
+ros2_j1939_babbler is a J1939-to-ROS message bridge based off the [work of Arturo Saucedo and Isaac Blankenau](https://github.com/psaucedoa/generic_can_driver)
+which was [presented at ROSCON 2024](https://vimeo.com/1026028313). It expands on this by automatically generating ROS
+message definitions from a DBC file and automatically converting incoming J1939 messages to their respective ROS messages.
 
-You can collect logs and use some third party software to decode after-the-fact, or hardcode some
-parser for real-time translation for a specific sensor. But we thought it'd be nice to load a dbc
-and start reading data through ROS2. So we whipped up a simple driver for ROS2 that integrated with 
-ros2_socketcan to decode incoming CAN frames live. 
+There are two variations of the bridge. The first, `babel_bridge`, uses [ros2_babel_fish](https://github.com/LOEWE-emergenCITY/ros_babel_fish)
+to load and map message definitions at runtime. This allows you to use ros2_j1939_babbler without needing to recompile 
+the bridge every time your message definitions change: as long as you start it with a current DBC file and have message
+a ROS package with message definitions available, it will work. The second variation, `static_bridge` bakes message
+translations in at compile time for better and more reliable performance. In nearly all applications, the J1939 messages
+which will be on the bus are known at compile time, so for those willing to recompile the bridge whenever the DBC changes,
+the static bridge bypasses all the type introspection for a much simpler node.
 
-## Setup
+The backbone of ros2_j1939_babbler is `ros2_j1939_babbler_msgs/MessageGenerator.py`, which parses the DBC file and
+generates ROS message definitions. As well, it generates a C++ header containing the template specialisations the static
+bridge needs for populating the ROS message from the J1939 message and for generating the compile-time dispatch table.
+An example of the generated header is shown below. The templates to complete the conversions and dispatchng are contained in
+`ros2_j1939_babbler_msgs/include/ros2_j1939_babbler_msgs/type_conversion_helpers.hpp`.
 
-`sudo apt install can-utils`
-
-`candump canX` To see data stream from network canX
-`canplayer -I xxx.log` To stream data from a saved log file
-`candump -l` To record data to a log file
-
-All you need is a device and a DBC! 
-
-> The whole J1939 standard dbc will work - this takes care of using the correct messages for your device
-
-1. Get a J1939 device (like some sensor)
-
-2. Physically connect and power the sensor
-
-3. Set up a CAN port on the host machine
-
-   - For a PEAK CAN device:
-
-       `sudo ip link set can0 up type can bitrate 250000 dbitrate 2000000 fd on fd-non-iso on `
-
-   - For a Lawicel CANusb:
-
-       `sudo slcand -o -c -f -s5 /dev/ttyUSB0 can0`
-       
-       `sudo ifconfig can0 up`
-
-   - For a Virtual CAN network:
- 
-       `ip link add dev vcan0 type vcan`
-
-       `ip link set up vcan0`
-
-4. Modify `generic_can_driver/config/socketcan_params.yaml` for your interface (e.g. `can0`)
-
-5. Modify `generic_can_driver/config/generic_can_params.yaml` for your device's id
-   
-   - This is the last two digits in the identifier of the sensor's CAN frame (e.g. E5) converted to 
-     decimal
-
-6. Launch `ros2 launch generic_can_driver generic_can.launch.py`
-
-## Walkthrough
-
-1. on_configure() 
-    1. setupDatabase()
-       1. dbc_pgns_
-    2. configurePublishers()
-2. on_activate()
-    1. activatePublishers()
-    2. subscribe to can bus 
-    3. bind rxFrame()
-3. rxFrame() loop
-
-### Configure
+As templates are extensively used as part of the compile-time implementation, the PIMPL technique is used to prevent
+implementation details from leaking into public headers.
 
 
-## FAQ
+## How to Use
+1. Replace `ros2_J1939_babbler_msgs/Messages.dbc` with your own DBC file, or alternatively set the CMake variable `DBC_PATH`
+   to your DBC file
+2. Compile and install the ros2_j1939_babbler_msgs package, or your own fork
+3. If using the babel_bridge, simply run the babel_bridge node.
+   - e.g. `ros2 run ros2_j1939_babbler babel_bridge --ros-args -p dbw_dbc_file:=./ros2_j1939_babbler_msgs/Messages.dbc -p msg_package:=ros2_j1939_babbler_msgs ...and so on`
+4. If you wish to use the static_bridge, recompile and install the ros2_j1939_babbler package, and run the static_bridge node
+   - e.g. `ros2 run ros2_j1939_babbler static_bridge --ros-args -p dbw_dbc_file:=./ros2_j1939_babbler_msgs/Messages.dbc -p msg_package:=ros2_j1939_babbler_msgs ...and so on`
 
- 1. Can you launch this node **multiple** times?
-       
-       > Yes. Make sure to edit the deivce name, frame, and ID in each node's config so that it
-       parses the correct device
+Both nodes are offered as components if you desire to run them as part of a composable node container. 
 
-2. What if I have **multiple** CAN lines?
-    > You can launch multiple instances of ros2_socketcan. Just make sure that you give each node
-    the correct name for its CAN interface (e.g. can0, can1, can2, ...)
+## ROS Parameters
+| Parameter        | Type        | Description                                                                                                | Default | babel_bridge | static_bridge |
+|------------------|-------------|------------------------------------------------------------------------------------------------------------|---------|--------------|---------------|
+| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &check;       |
+| msg_package      | string      | ROS package to load message definitions from                                                               | empty   | &check;      | &cross;       |
+| frame_id         | string      | TF2 frame designator                                                                                       | empty   | &check;      | &check;       |
+| sensor_name      | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
+| device_ID        | uint8       | Source address of this ECU, used to filter PDU1 messages                                                   | 0       | &check;      | &check;       |
+| can_sub_topic    | string      | [ros2_socketcan](https://github.com/autowarefoundation/ros2_socketcan) topic to listen for CAN messages on | empty   | &check;      | &check;       |
+| msg_topic_prefix | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
+| msg_filter_ids   | int64 array | List of message IDs to match before processing                                                             | {0}     | &check;      | &check;       |
+| msg_filter_masks | int64 array | List of ID masks to control matching, each associated with the ID at the same index in `msg_filter_ids`    | {0}     | &check;      | &check;       |
 
-3. What if I have multiple devices on **one** CAN line?
-    > You can launch multiple instances of the generic_can_driver, and leave the interface in the 
-    node config (e.g can0) the same. However, make sure you update the **device names**, **frames**,
-     and **IDs** in each node's config.
+Note that the default ID/mask pair functions as an all-pass filter.
 
-4. What message type does this publish out?
-    > This publishes a `j1939_msgs/msg/can_data.hpp` message. The message definition can be
-    found under `ros2_j1939/j1939_msgs`. This is a key-value message type, kinda like 
-    `diagnostic_msgs/msg/DiagnosticArray.msg` but instead of being a `string-string` key-value pair,
-    this is a `string-float64` key-value pair.
 
-5. Why does it use this custom message?
-    > Again, the motivation for this simple driver was to create a quick way to bring in human-
-    readable data from a J1939 sensor into ROS2. For a specific implementation, which outputs a 
-    "correct" message type (like an IMU sensor message), have a look at device-specific driver
-    implementations.
+## Future Work
+- Implement other direction: converting ROS messages to J1939 messages 
+- Eliminate/clarify overlap between `sensor_name` and `msg_topic_prefix` parameters
+- Replace `can_dbc_parser` with a compile-time mapping in static bridge
+  - Ideally supports enums as well
+- Extend to support plain CAN messages
+- Fix address claim sequence
+- J1939 TP message support
+- Clean up remaining ros2_j1939 code
+- Fix launch file
+- Provide better example commands, some example screenshots
+- Unit tests
 
-6. How are the publishers set up?
-   > On configure, the driver parses the (**user-provided**) dbc file and spins up one publisher per
-   dbc message defined within that file. So if you have three dbc messages, this creates three 
-   publishers, with the topics automatically named according to `/device_name/message_name`
 
-7. The values of some of my data are constant and REALLY large, why?
-   > Sometimes if a field is empty or erroring, that field ("signal") of the message will simply 
-   hold the max possible value. So if your temperature is in a range of `[0,202]`, an error (such as
-    no sensor, sensor malfunction, etc.) will populate that temperature field with `202`.
+## Example of auto-generated `ros2_j1939_babbler_msgs/type_conversion.hpp` for the curious:
+In addition to the ROS2 message interfaces generated by the `ros2_j1939_babbler_msgs` package, a C++ header providing
+utilities to convert J1939 messages to the associated ROS message is also generated. These are in the form of template
+specialisations, which are then used by `ros2_j1939_babbler_msgs/type_conversion_helpers.hpp` to produce more 
+sophisticated type conversion functions. This culminates in a compile-time-generated dispatch table that can be used to
+automatically select the correct function for building up and publishing the ROS2 version of a received J1939 message.
 
-## Errors
+Below is an example of what this type conversion header may contain. This was generated from a DBC file containing only 
+the messages "EngineData" (PGN 0x00001 / CAN ID 0x00000100) and "WheelData" (PGN 0x00002 / CAN ID 0x00000200). 
+```c++
+#ifndef ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
+#define ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
 
- 1. Socket Can refuses to change lifecycle state
+#include "type_conversion_helpers.hpp"
 
-       > Make sure you have a can bus enabled and that its name is correct in the launch file/params
+#include <unordered_map>
+#include <string>
+#include <tuple>
+#include <cstdint>
 
-2. `Error receiving CAN message: can0 - CAN Receive Timeout`
+#include <rclcpp/rclcpp.hpp>
 
-    > ros2_socketcan expects a certain frequency of incoming CAN frames. If this frequency is 
-    missed, after a certain amount of time it alerts the user. This timeout length is configurable,
-    however if your devices are active (just publishing at a slow frequency) this can also just be
-    ignored.
+// ===== Message type includes =====
+        
+#include "msg/engine_data.hpp" 
+#include "msg/wheel_data.hpp" 
+        
+namespace ros2_j1939_babbler_msgs {
+    
+    
+    // ===== Type conversion functions =====
+
+    // BEGIN AUTO-GENERATED SPECIALISATIONS
+    template<>
+    inline void populate<msg::EngineData>(msg::EngineData& msg, const std::unordered_map<std::string, double>& fields)
+    {
+        msg.engine_rpm = static_cast<float>(fields.at("Engine_RPM"));
+        msg.engine_temp = static_cast<std::uint8_t>(fields.at("Engine_Temp"));
+    }
+    template<>
+    inline void populate<msg::WheelData>(msg::WheelData& msg, const std::unordered_map<std::string, double>& fields)
+    {
+        msg.wheel_speed_fl = static_cast<float>(fields.at("Wheel_Speed_FL"));
+        msg.wheel_speed_fr = static_cast<float>(fields.at("Wheel_Speed_FR"));
+    }
+    // END AUTO-GENERATED SPECIALISATIONS
+    
+    
+    // ===== Map converting PGN to ROS message type =====
+    
+    // BEGIN AUTO-GENERATED SPECIALISATIONS
+    template<> struct pgn_message_type_map<256> { using type = msg::EngineData; };
+    template<> struct pgn_message_type_map<512> { using type = msg::WheelData; };
+    // END AUTO-GENERATED SPECIALISATIONS
+    
+    
+    // ===== Map converting ROS message type to the ROS message type as a string =====    
+    
+    // BEGIN AUTO-GENERATED SPECIALISATIONS
+    template<> struct message_type_name_map<msg::EngineData> { static constexpr char name[] = "EngineData"; };
+    template<> struct message_type_name_map<msg::WheelData> { static constexpr char name[] = "WheelData"; };
+    // END AUTO-GENERATED SPECIALISATIONS
+    
+    
+    // ===== Create alias for dispatch table containing list of PGNs for all generated ROS messages =====
+        
+    using DispatchTable = DispatchTable_T<256, 512>;
+        
+} // namespace ros2_j1939_babbler_msgs
+
+#endif //ROS2_J1939_BABBLER_MSGS__AUTO_GENERATED_TYPE_CONVERSIONS_
+```
