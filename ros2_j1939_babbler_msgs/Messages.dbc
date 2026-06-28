@@ -14,6 +14,6 @@ BO_ 512 WheelData: 8 ECU2
  SG_ Wheel_Speed_FR : 16|16@1+ (0.1,0) [0|250] "km/h" ECU2
 
 SIG_VALTYPE_ 256 Engine_RPM  : 1;
-SIG_VALTYPE_ 512 Engine_Temp  : 0;
+SIG_VALTYPE_ 256 Engine_Temp  : 0;
 SIG_VALTYPE_ 512 Wheel_Speed_FL  : 1;
 SIG_VALTYPE_ 512 Wheel_Speed_FR  : 1;

@@ -26,241 +26,165 @@
 
 namespace {
     enum class IntegerLengths;
+
     IntegerLengths ceil_bits(const uint8_t bit_length);
+
     void putSignalInRosMessage(
-            ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
-            const std::string& ros_signal_name
+        ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
+        const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
     );
+
     void putSignalInCanMessage(
-            const ros_babel_fish::CompoundMessage& ros_msg, NewEagle::DbcSignal& can_signal, rclcpp::Logger&& logger,
-            const std::string& ros_signal_name
+        const ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
+        const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
     );
+
     template<typename T>
     void decodeAndPut(ros_babel_fish::Message &ros_signal, uint64_t raw_value,
-                      const ros2_j1939_babbler::PhysicalValue &can_signal, rclcpp::Logger &&logger);
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger);
+
     template<typename T>
     void encodeAndPut(const ros_babel_fish::Message &ros_signal,
-                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data, rclcpp::Logger &&logger);
-    std::string read_file(const std::string& dbc_path);
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data,
+                      const rclcpp::Logger &logger);
+
+    std::string read_file(const std::string &dbc_path);
 } // namespace
 
 namespace ros2_j1939_babbler {
-
-    BabelBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
+    BabelBridge::Impl::Impl(rclcpp::Node *node) : BridgeCore(node) {
         msg_package_ = node_->declare_parameter<std::string>("msg_package", "");
 
         fish_ = ros_babel_fish::BabelFish::make_unique();
-        can::parse_dbc(read_file(dbw_dbc_file_), std::ref(dbc_parser_));
+        bool successfully_parsed = can::parse_dbc(read_file(dbw_dbc_file_), std::ref(dbc_parser_));
+        if (!successfully_parsed) {
+            RCLCPP_ERROR_STREAM(node_->get_logger(), "DBC parsing failed for file '" << dbw_dbc_file_ << "'");
+        }
+
 
         // automatically configure publishers
-        this->configurePublishers(msg_topic_prefix_);
-        RCLCPP_INFO(node_->get_logger(), "Setup publishers!");
-        this->configureSubscribers(msg_topic_prefix_);
-        RCLCPP_INFO(node_->get_logger(), "Setup subscribers!");
+        this->configure_publishers_subscribers(msg_topic_prefix_);
+        RCLCPP_INFO(node_->get_logger(), "Setup ROS topics!");
     }
 
 
     BabelBridge::Impl::~Impl() = default;
 
-    void BabelBridge::Impl::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG) {
+    void BabelBridge::Impl::receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) {
         RCLCPP_DEBUG(
-                node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", MSG->is_rtr, MSG->is_error, MSG->id,
-                MSG->id & 0x000000FFu
+            node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error,
+            message->id,
+            message->id & 0x000000FFu
         );
-        // if message is not a request, error, and matches device ID
-        if (!MSG->is_rtr && !MSG->is_error && (device_ID_ == (MSG->id & 0x000000FFu) && filter(MSG->id))) {
-            // local const to store incoming message
-            const can_msgs::msg::Frame::SharedPtr incoming_MSG = MSG;
+        // If message is a request frame or error frame, we ignore it
+        // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the
+        //    message isn't in there we ignore and let others endpoints handle
+        if (!message->is_rtr && !message->is_error && filter(message->id)) {
+            const uint32_t pgn = message->id & PGN_MASK;
+            const auto it = dbc_parser_.messages.find(pgn);
+            const bool found = it != dbc_parser_.messages.end();
             RCLCPP_DEBUG(
-                    node_->get_logger(), "Filtering message; sa:%d, count:%zu", MSG->id & 0x00FFFF00u,
-                    dbc_id_msg_map_.count(MSG->id & 0x00FFFF00u)
+                node_->get_logger(), "Message passed filter; found in map: %s", found ? "true" : "false"
             );
-            // if the message type / PGN is found in the dbc
-            if (dbc_id_msg_map_.count(MSG->id & 0x00FFFF00u)) {
-                // translate the message data
-                NewEagle::DbcMessage message = dbc_id_msg_map_[incoming_MSG->id & PFPS_MASK];
-                message.SetFrame(incoming_MSG);
 
-                // then create a local ros2 message
-                // not really sure why we create the shared_ptr and reference the object instead of stack-allocating, but this is what all the examples do
-                ros_babel_fish::CompoundMessage::SharedPtr can_data_ptr =
-                        fish_->create_message_shared(dbc_ros_message_name_mappings_.at(message.GetName()));
-                ros_babel_fish::CompoundMessage& can_data = *can_data_ptr;
+            if (found) {
+                // Not really sure why we create the shared_ptr and reference the object instead of stack-allocating, but this is what all the examples do
+                std::shared_ptr<ros_babel_fish::CompoundMessage> can_data_ptr =
+                        fish_->create_message_shared(pgn_ros_name_mappings_.at(pgn));
+                ros_babel_fish::CompoundMessage &can_data = *can_data_ptr; // Shorthand
 
-                // populate the local ros2 message header, frame, and message name
                 can_data["header"]["stamp"] = node_->now();
                 can_data["header"]["frame_id"] = sensor_name_;
-                can_data["src_addr"] = static_cast<uint8_t>(incoming_MSG->id & SOURCE_ADDR_MASK);
+                can_data["src_addr"] = static_cast<uint8_t>(message->id & SOURCE_ADDR_MASK);
 
-                // get the signals (e.g. x, y, z) within the message (e.g. acceleration)
-                std::map<std::string, NewEagle::DbcSignal> signals_map = *message.GetSignals();
-                for (auto [key_signal, value_signal] : signals_map) {
-                    // get the data for the current signal, figure out type, and insert into message accordingly
+                const std::unordered_map<std::string, PhysicalValue> &signals_map = it->second.signals;
+                for (const auto &signal_info: signals_map | std::views::values) {
                     putSignalInRosMessage(
-                            can_data, value_signal, node_->get_logger(), dbc_ros_signal_name_mappings_.at(key_signal)
+                        can_data[dbc_signal_name_to_ros(signal_info.signal.name())], message->data, signal_info, node_->get_logger()
                     );
                 }
 
-                // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the
-                //    message isn't in there we ignore and let others endpoints handle
-
-                // publish finalized message
-                publishers_[dbc_ros_message_name_mappings_.at(message.GetName())]->publish(can_data);
+                publishers_.at(pgn)->publish(can_data);
             }
         }
     }
 
-    void BabelBridge::Impl::txFrame(ros_babel_fish::CompoundMessage::UniquePtr MSG) {
-        auto it = ros_msg_to_ids_.find(MSG->name());
-
-        if (it == ros_msg_to_ids_.end()) {
-            RCLCPP_ERROR(node_->get_logger(), "Could not map ROS message '%s' to message ID in DBC", MSG->name().c_str());
+    void BabelBridge::Impl::transmit_frame(std::unique_ptr<ros_babel_fish::CompoundMessage> message) {
+        const auto pgn_lookup_it = ros_name_pgn_mappings_.find(message->name());
+        const bool pgn_found = pgn_lookup_it != ros_name_pgn_mappings_.end();
+        if (!pgn_found) {
+            RCLCPP_ERROR(node_->get_logger(), "Could not map ROS message '%s' to message ID in DBC",
+                         message->name().c_str());
             return;
         }
 
-        NewEagle::DbcMessage* message_type = dbw_dbc_db_.GetMessageById(it->second);
-        if (message_type == nullptr) {
+        const uint32_t pgn = pgn_lookup_it->second;
+        const auto message_lookup_it = dbc_parser_.messages.find(pgn);
+        const bool message_found = message_lookup_it != dbc_parser_.messages.end();
+        if (!message_found) {
             RCLCPP_ERROR(
-                    node_->get_logger(), "Could not map ROS message '%s' with CAN ID '%d' to a type", MSG->name().c_str(),
-                    it->second
+                node_->get_logger(), "Could not map ROS message '%s' with PGN '%d' to a type", message->name().c_str(),
+                pgn
             );
             return;
         }
+        MessageDefinition message_definition = message_lookup_it->second;
 
-        for (auto& [signal_name, signal] : *message_type->GetSignals()) {
-            putSignalInCanMessage(*MSG, signal, node_->get_logger(), dbc_ros_signal_name_mappings_.at(signal_name));
+        auto can_message = std::make_unique<can_msgs::msg::Frame>();
+        can_message->header.stamp = node_->now();
+        can_message->header.frame_id = sensor_name_;
+        can_message->id = pgn | device_ID_;
+        can_message->dlc =  message_definition.dlc;
+
+        for (const auto &signal_info: message_definition.signals | std::views::values) {
+            putSignalInCanMessage((*message)[dbc_signal_name_to_ros(signal_info.signal.name())], can_message->data, signal_info, node_->get_logger());
         }
 
-        pub_can_->publish(message_type->GetFrame());
+        pub_can_->publish(std::move(can_message));
     }
 
     // BEGIN MANAGEMENT FUNCTIONS //
 
-    void BabelBridge::Impl::configurePublishers(const std::string& msg_topic_prefix) {
-        // iterate over the dbc to spawn an equal amount of publishers
-        for (auto& [key_message, value_message] : dbc_name_msg_map_) { // GetSignals is not const-qualified...
-            std::string msg_name =
-                    (std::ostringstream{} << msg_package_ << "/msg/" << dbc_message_name_to_ros(key_message)).str();
-            RCLCPP_DEBUG(node_->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
-            RCLCPP_DEBUG(node_->get_logger(), "Attempting to load '%s'", msg_name.c_str());
+    void BabelBridge::Impl::configure_publishers_subscribers(const std::string &msg_topic_prefix) {
+        RCLCPP_INFO(node_->get_logger(), "AAA");
+        for (const auto &[pgn, message_definition]: dbc_parser_.messages) {
+            RCLCPP_INFO(node_->get_logger(), "AAAB");
+            const std::string &unprefixed_ros_message_name = dbc_message_name_to_ros(message_definition.name);
+            std::string message_name =
+                    (std::ostringstream{} << msg_package_ << "/msg/" << unprefixed_ros_message_name).str();
+            RCLCPP_DEBUG_STREAM(node_->get_logger(), "Configuring Publishers - found PGN: " << pgn);
+            RCLCPP_DEBUG_STREAM(node_->get_logger(), "Attempting to load '" << message_name << "'");
             try {
                 // There is a missing @throws marker in the documentation for ros_babel_fish:::BabelFish::create_publisher, but it
                 //      raises BabbleFishException if the type cannot be found
                 std::string topic_name =
                         (std::ostringstream{} << msg_topic_prefix
-                                              << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
-                                              << sensor_name_ << '/' << key_message)
-                                .str();
-                publishers_[msg_name] =
-                        this->fish_->create_publisher(*node_, topic_name, msg_name, 20, rclcpp::PublisherOptions{});
+                         << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
+                         << sensor_name_ << '/' << unprefixed_ros_message_name)
+                        .str();
+                publishers_[pgn] =
+                        fish_->create_publisher(*node_, topic_name, message_name, 20, rclcpp::PublisherOptions{});
+                subscribers_[pgn] = fish_->create_subscription(
+                    *node_, topic_name + "/tx", message_name, 20,
+                    [this](std::unique_ptr<ros_babel_fish::CompoundMessage> message) { transmit_frame(std::move(message)); }
+                );
 
-                this->dbc_ros_message_name_mappings_.emplace(key_message, std::move(msg_name));
-                for (const auto& [signal_name, signal] : *value_message.GetSignals()) {
-                    dbc_ros_signal_name_mappings_.emplace(signal_name, std::move(dbc_signal_name_to_ros(signal_name)));
-                }
-            } catch (class_loader::LibraryLoadException& e) {
-                RCLCPP_FATAL_STREAM(
-                        node_->get_logger(), "Failed to load library containing message type '" << msg_name << "'\n"
-                                                                                                << e.what()
+                pgn_ros_name_mappings_.emplace(pgn, message_name);
+                ros_name_pgn_mappings_.emplace(std::move(message_name), pgn);
+            } catch (class_loader::LibraryLoadException &e) {
+                RCLCPP_FATAL_STREAM(node_->get_logger(),
+                                    "Failed to load library containing message type '" << message_name << "'\n"
+                                    << e.what()
                 );
                 throw;
-            } catch (ros_babel_fish::BabelFishException& e) {
-                RCLCPP_WARN_STREAM(
-                        node_->get_logger(), "Could not find message type for message '" << msg_name << "'\n"
-                                                                                         << e.what()
+            } catch (ros_babel_fish::BabelFishException &e) {
+                RCLCPP_WARN_STREAM(node_->get_logger(),
+                                   "Could not find message type for message '" << message_name << "'\n"
+                                   << e.what()
                 );
             }
         }
     }
-
-    void BabelBridge::Impl::configureSubscribers(const std::string& msg_topic_prefix) {
-        // iterate over the dbc to spawn an equal amount of publishers
-        for (auto [key_message, value_message] : dbc_name_msg_map_) {
-            std::string msg_name =
-                    (std::ostringstream{} << msg_package_ << "/msg/" << dbc_message_name_to_ros(key_message)).str();
-            RCLCPP_DEBUG(node_->get_logger(), "Configuring Publishers - found key_message: %s", key_message.c_str());
-            RCLCPP_DEBUG(node_->get_logger(), "Attempting to load '%s'", msg_name.c_str());
-            try {
-                // There is a missing @throws marker in the documentation for ros_babel_fish:::BabelFish::create_publisher, but it
-                //      raises BabbleFishException if the type cannot be found
-                std::string topic_name =
-                        (std::ostringstream{} << msg_topic_prefix
-                                              << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
-                                              << sensor_name_ << '/' << key_message << "/tx")
-                                .str();
-                this->subscribers_[dbc_message_name_to_ros(key_message)] = this->fish_->create_subscription(
-                        *node_, topic_name, msg_name, 20,
-                        [this](ros_babel_fish::CompoundMessage::UniquePtr MSG) { txFrame(std::move(MSG)); }
-                );
-                this->ros_msg_to_ids_[msg_name] = value_message.GetId();
-            } catch (class_loader::LibraryLoadException& e) {
-                RCLCPP_FATAL_STREAM(
-                        node_->get_logger(), "Failed to load library containing message type '" << msg_name << "'\n"
-                                                                                                << e.what()
-                );
-                throw;
-            } catch (ros_babel_fish::BabelFishException& e) {
-                RCLCPP_WARN_STREAM(
-                        node_->get_logger(), "Could not find message type for message '" << msg_name << "'\n"
-                                        dbc_parser_.find_message()                                                 << e.what()
-                );
-            }
-        }
-    }
-
-    // END MANAGEMENT FUNCTIONS //
-
-    // TODO:Arturo - Look through this and make sure it's the standard way of renaming CAN devices
-    // also, this could just be its own .log file or something idk
-
-    // void GenericCanDriver::Impl::txRename(
-    //   const std::array<uint8_t, 8UL> name, const uint8_t new_source_address)
-    // {
-    //   std::array<uint8_t, 8UL> BAM_data_out = {0x20u, 0x09u, 0x00u, 0x02u, 0xFFu, 0xD8u, 0xFEu, 0x00u};
-    //   can_msgs::msg::Frame BAM_frame_out;
-    //   uint32_t j1939_id = 0x1CECFF00u;
-    //   BAM_frame_out.header.stamp = node_->now();
-    //   BAM_frame_out.header.frame_id = "ROS2_command";
-    //   BAM_frame_out.id = j1939_id;
-    //   BAM_frame_out.is_rtr = false;
-    //   BAM_frame_out.is_extended = true;
-    //   BAM_frame_out.is_error = false;
-    //   BAM_frame_out.dlc = 8;
-    //   BAM_frame_out.data = BAM_data_out;
-
-    //   std::array<uint8_t, 8UL> name_data_out_1 = {0x01u, name[0], name[1], name[2],
-    //     name[3], name[4], name[5], name[6]};
-    //   can_msgs::msg::Frame name_frame_out_1;
-    //   j1939_id = 0x1CEBFF00u;
-    //   name_frame_out_1.header.stamp = node_->now();
-    //   name_frame_out_1.header.frame_id = "ROS2_command";
-    //   name_frame_out_1.id = j1939_id;
-    //   name_frame_out_1.is_rtr = false;
-    //   name_frame_out_1.is_extended = true;
-    //   name_frame_out_1.is_error = false;
-    //   name_frame_out_1.dlc = 8;
-    //   name_frame_out_1.data = name_data_out_1;
-
-    //   std::array<uint8_t, 8UL> name_data_out_2 = {0x02u, name[7], new_source_address, 0xFF, 0xFF, 0xFF,
-    //     0xFF, 0xFF};
-    //   can_msgs::msg::Frame name_frame_out_2;
-    //   j1939_id = 0x1CEBFF00u;
-    //   name_frame_out_2.header.stamp = node_->now();
-    //   name_frame_out_2.header.frame_id = "ROS2_command";
-    //   name_frame_out_2.id = j1939_id;
-    //   name_frame_out_2.is_rtr = false;
-    //   name_frame_out_2.is_extended = true;
-    //   name_frame_out_2.is_error = false;
-    //   name_frame_out_2.dlc = 8;
-    //   name_frame_out_2.data = name_data_out_2;
-
-    //   pub_can_->publish(BAM_frame_out);
-    //   rclcpp::sleep_for(std::chrono::milliseconds(100));
-    //   pub_can_->publish(name_frame_out_1);
-    //   rclcpp::sleep_for(std::chrono::milliseconds(100));
-    //   pub_can_->publish(name_frame_out_2);
-    //   RCLCPP_INFO(node_->get_logger(), "Published renaming thing!!!!!!!! %d", new_source_address);
-    // }
 
 } // namespace ros2_j1939_babbler
 
@@ -271,7 +195,8 @@ namespace {
     enum class IntegerLengths { b8, b16, b32, b64 };
 
     void putSignalInRosMessage(
-            ros_babel_fish::Message& ros_signal, std::array<uint8_t, 8>& can_data, ros2_j1939_babbler::PhysicalValue& can_signal, rclcpp::Logger&& logger
+        ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
+        const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
     ) {
         uint64_t raw = 0;
         std::memcpy(&raw, &can_data[0], sizeof(raw));
@@ -282,9 +207,9 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Processing signed integer signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
-                switch (ceil_bits(can_signal.dlc)) {
+                switch (ceil_bits(can_signal.size)) {
                     case IntegerLengths::b8:
                         decodeAndPut<int8_t>(ros_signal, raw, can_signal, logger);
                         break;
@@ -303,10 +228,10 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Processing unsigned integer signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
                 // This is unbelievably ugly, but was only way I could get the compiler to not promote to int/uint and cause a Babel fish warning
-                switch (ceil_bits(can_signal.dlc)) {
+                switch (ceil_bits(can_signal.size)) {
                     case IntegerLengths::b8:
                         decodeAndPut<uint8_t>(ros_signal, raw, can_signal, logger);
                         break;
@@ -325,27 +250,28 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Processing float signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
                 decodeAndPut<float>(ros_signal, raw, can_signal, logger);
                 break;
             case can::f64:
                 RCLCPP_DEBUG_STREAM(
-                     logger,
-                     "Processing double signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
-                     << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
-                 );
+                    logger,
+                    "Processing double signal '" << can_signal.signal.name() << "': raw=" << raw << ", scale="
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
+                );
                 decodeAndPut<double>(ros_signal, raw, can_signal, logger);
                 break;
         }
     }
 
     void putSignalInCanMessage(
-            const ros_babel_fish::Message& ros_signal, std::array<uint8_t, 8>& can_data, const ros2_j1939_babbler::PhysicalValue& can_signal, rclcpp::Logger&& logger
+        const ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
+        const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
     ) {
         switch (can_signal.signal.value_type()) {
             case can::i64:
-                switch (ceil_bits(can_signal.dlc)) {
+                switch (ceil_bits(can_signal.size)) {
                     case IntegerLengths::b8:
                         encodeAndPut<int8_t>(ros_signal, can_signal, can_data, logger);
                         break;
@@ -361,7 +287,7 @@ namespace {
                 }
                 break;
             case can::u64:
-                switch (ceil_bits(can_signal.dlc)) {
+                switch (ceil_bits(can_signal.size)) {
                     case IntegerLengths::b8:
                         encodeAndPut<uint8_t>(ros_signal, can_signal, can_data, logger);
                         break;
@@ -378,7 +304,7 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Pushed unsigned integer signal '" << can_signal.signal.name() << "': scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
                 break;
             case can::f32:
@@ -386,7 +312,7 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Pushed float signal '" << can_signal.signal.name() << "': scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
                 break;
             case can::f64:
@@ -394,7 +320,7 @@ namespace {
                 RCLCPP_DEBUG_STREAM(
                     logger,
                     "Pushed double signal '" << can_signal.signal.name() << "': scale="
-                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.dlc
+                    << can_signal.factor << ", offset=" << can_signal.value_offset << ", length=" << can_signal.size
                 );
                 break;
         }
@@ -402,7 +328,7 @@ namespace {
 
     template<typename T>
     void decodeAndPut(ros_babel_fish::Message &ros_signal, uint64_t raw_value,
-                      const ros2_j1939_babbler::PhysicalValue &can_signal, rclcpp::Logger &&logger) {
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger) {
         T data = static_cast<T>(static_cast<double>(raw_value) * can_signal.factor + can_signal.value_offset);
         if (data < can_signal.min || data > can_signal.max) {
             RCLCPP_DEBUG_STREAM(
@@ -416,18 +342,22 @@ namespace {
 
     template<typename T>
     void encodeAndPut(const ros_babel_fish::Message &ros_signal,
-                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data, rclcpp::Logger &&logger) {
-        T value = ros_signal.as<ros_babel_fish::ValueMessage<T>>().getValue();
+                      const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data,
+                      const rclcpp::Logger &logger) {
+        T value = ros_signal.as<ros_babel_fish::ValueMessage<T> >().getValue();
         if (value < can_signal.min || value > can_signal.max) {
             RCLCPP_DEBUG_STREAM(
                 logger,
-                "Signal '" << can_signal.signal.name() << "': value=" << value << " is out of range; min=" << can_signal.
+                "Signal '" << can_signal.signal.name() << "': value=" << value << " is out of range; min=" << can_signal
+                .
                 min << ", max=" << can_signal.max
             );
         }
-        T raw_value = (ros_signal.as<ros_babel_fish::ValueMessage<T>>().getValue() - can_signal.value_offset) / can_signal.factor;
-        can_signal.codec(*reinterpret_cast<uint64_t*>(&raw_value), can_data.data());
+        T raw_value = (ros_signal.as<ros_babel_fish::ValueMessage<T> >().getValue() - can_signal.value_offset) /
+                      can_signal.factor;
+        can_signal.codec(*reinterpret_cast<uint64_t *>(&raw_value), can_data.data());
     }
+
     /**
      * @brief Determines the ROS integer type needed to hold an integer of a certain bit length.
      * @param bit_length the number of bits the integer to store is composed of
@@ -440,7 +370,7 @@ namespace {
         throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
     }
 
-    std::string read_file(const std::string& dbc_path) {
+    std::string read_file(const std::string &dbc_path) {
         std::ifstream dbc_content(dbc_path);
         std::ostringstream ss;
         ss << dbc_content.rdbuf();

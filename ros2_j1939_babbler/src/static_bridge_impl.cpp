@@ -22,10 +22,6 @@
 
 #include "internal/static_bridge_impl.hpp"
 
-namespace {
-    constexpr uint32_t PGN_MASK = 0x03FFFF00;
-}
-
 namespace ros2_j1939_babbler {
 
     StaticBridge::Impl::Impl(rclcpp::Node* node) : BridgeCore(node) {
@@ -36,29 +32,28 @@ namespace ros2_j1939_babbler {
 
     StaticBridge::Impl::~Impl() = default;
 
-    void StaticBridge::Impl::rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG) {
+    void StaticBridge::Impl::receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) {
         RCLCPP_DEBUG(
-                node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", MSG->is_rtr, MSG->is_error, MSG->id,
-                MSG->id & 0x000000FFu
+                node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error, message->id,
+                message->id & 0x000000FFu
         );
         // if message is not a request, error, and matches device ID
-        if (!MSG->is_rtr && !MSG->is_error && (device_ID_ == (MSG->id & 0x000000FFu) && filter(MSG->id))) {
+        if (!message->is_rtr && !message->is_error && (device_ID_ == (message->id & 0x000000FFu) && filter(message->id))) {
             // local const to store incoming message
-            const can_msgs::msg::Frame::SharedPtr incoming_MSG = MSG;
             RCLCPP_DEBUG(
-                    node_->get_logger(), "Filtering message; sa:%d, count:%zu", MSG->id & 0x00FFFF00u,
-                    dbc_id_msg_map_.count(MSG->id & 0x00FFFF00u)
+                    node_->get_logger(), "Filtering message; sa:%d, count:%zu", message->id & 0x00FFFF00u,
+                    dbc_id_msg_map_.count(message->id & 0x00FFFF00u)
             );
             // if the message type / PGN is found in the dbc
-            if (dbc_id_msg_map_.count(MSG->id & 0x00FFFF00u)) {
-
+            if (dbc_id_msg_map_.count(message->id & 0x00FFFF00u)) {
+                auto message_copy = std::make_shared<can_msgs::msg::Frame>(*message); // TODO: Fix to not need this
                 // translate the message data
-                NewEagle::DbcMessage message = dbc_id_msg_map_[incoming_MSG->id & PFPS_MASK];
-                message.SetFrame(incoming_MSG);
+                NewEagle::DbcMessage eagle_message = dbc_id_msg_map_[message->id & PGN_MASK];
+                eagle_message.SetFrame(message_copy);
 
                 // Transform the fields map
                 std::unordered_map<std::string, double> fields;
-                for (const auto& [key, value] : *message.GetSignals()) { fields[key] = value.GetResult(); }
+                for (const auto& [key, value] : *eagle_message.GetSignals()) { fields[key] = value.GetResult(); }
 
                 // populate the local ros2 message header, frame, and message name
                 std_msgs::msg::Header header;
@@ -67,8 +62,8 @@ namespace ros2_j1939_babbler {
 
                 // publish finalized message
                 publisher_dispatch_table_->runtime_dispatch(
-                        incoming_MSG->id & PGN_MASK, fields, std::move(header),
-                        static_cast<uint8_t>(incoming_MSG->id & SOURCE_ADDR_MASK)
+                        message->id & PGN_MASK, fields, std::move(header),
+                        static_cast<uint8_t>(message->id & SOURCE_ADDR_MASK)
                 );
             }
         }

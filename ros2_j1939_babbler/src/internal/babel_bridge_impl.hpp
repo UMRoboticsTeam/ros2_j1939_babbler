@@ -18,16 +18,15 @@
 #ifndef ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 #define ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 
-#include "bridge_core.hpp"
 #include "ros2_j1939_babbler/babel_bridge.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-
-#include <ros_babel_fish/babel_fish.hpp>
-
+#include "bridge_core.hpp"
 #include "v2c/v2c_transcoder.h"
 
+#include <ros_babel_fish/babel_fish.hpp>
+#include <rclcpp/rclcpp.hpp>
+
 #include <cassert>
+#include <string>
 
 namespace ros2_j1939_babbler {
     struct PhysicalValue {
@@ -35,49 +34,21 @@ namespace ros2_j1939_babbler {
         can::tr_signal signal;
         double factor;
         double value_offset;
-        unsigned dlc;
+        unsigned size;
         double min;
         double max;
         bool is_signed;
     };
 
-    class DbcParser {
-        std::unordered_map<uint32_t, std::unordered_map<std::string, PhysicalValue>> messages;
-
-        inline void tag_invoke(
-            can::def_sg_cpo, DbcParser &this_,
-            uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
-            unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
-            double sg_factor, double sg_offset, double sg_min, double sg_max,
-            std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
-        ) {
-            can::sig_codec codec{sg_start_bit, sg_size, sg_byte_order, sg_sign};
-            can::tr_signal signal{sg_name, codec, std::optional<int64_t>(sg_mux_switch_val)};
-            PhysicalValue value{
-                .codec = codec,
-                .signal{std::move(signal)},
-                .factor = sg_factor,
-                .value_offset = sg_offset,
-                .dlc = sg_size,
-                .min = sg_min,
-                .max = sg_max,
-                .is_signed = sg_sign == '-'
-            };
-            messages[message_id].emplace(sg_name, value);;
-        }
-
-        inline void tag_invoke(
-            can::def_sig_valtype_cpo, DbcParser &this_,
-            unsigned msg_id, std::string sg_name, unsigned sg_ext_val_type
-        ) {
-            assert(
-                messages[msg_id].find(sg_name) != messages[msg_id].end() &&
-                "Signal must be defined before its value type is set");
-            messages[msg_id].at(sg_name).signal.value_type(sg_ext_val_type);
-        }
+    struct MessageDefinition {
+        std::unordered_map<std::string, PhysicalValue> signals;
+        std::string name;
+        uint8_t dlc;
     };
 
-
+    struct DbcParser {
+        std::unordered_map<uint32_t, MessageDefinition> messages;
+    };
 
     /**
      * @brief Implementation of the runtime bridge, hidden from users through PIMPL pattern.
@@ -103,51 +74,41 @@ namespace ros2_j1939_babbler {
          *
          * @param MSG CAN message to handle
          */
-        void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG);
+        void receive_frame(std::unique_ptr<can_msgs::msg::Frame> message);
 
         /**
          * @brief Handle an outgoing CAN frame.
          *
          * If the message is present in the DBC file, determines converts it to a CAN message and sends it to the bus.
          *
-         * @param MSG ROS message to handle
+         * @param message ROS message to handle
          */
-        void txFrame(ros_babel_fish::CompoundMessage::UniquePtr MSG);
-
-        /**
-         * @brief Checks the messages in the DBC and creates a publisher for each one.
-         *
-         * For every message in the DBC which has an associated ROS type, a publisher is created with a topic following the
-         * pattern `msg_topic_prefix/sensor_name/key_message`.
-         *
-         * @param msg_topic_prefix prefix to apply before message topics
-         */
-        void configurePublishers(const std::string& msg_topic_prefix);
-
-        /**
-         * @brief Checks the messages in the DBC and creates a subscriber for each one.
-         *
-         * For every message in the DBC which has an associated ROS type, a subscriber is created with a topic following the
-         * pattern `msg_topic_prefix/sensor_name/key_message/tx`.
-         *
-         * @param msg_topic_prefix prefix to apply before message topics
-         */
-        void configureSubscribers(const std::string& msg_topic_prefix);
+        void transmit_frame(std::unique_ptr<ros_babel_fish::CompoundMessage> message);
 
     private:
         std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
-        ros_babel_fish::BabelFish::UniquePtr fish_; // Babelfish instance for loading/populating message definitions
-        std::unordered_map<std::string, ros_babel_fish::BabelFishPublisher::SharedPtr> publishers_; // Lookup publisher from ROS message name TODO: true?
-        std::unordered_map<std::string, ros_babel_fish::BabelFishSubscription::SharedPtr> subscribers_; // Lookup subscriber from ROS message name
-        std::unordered_map<std::string, std::uint32_t> ros_msg_to_ids_; // Lookup CAN message ID from ROS message type
-        std::unordered_map<std::string, std::string> dbc_ros_message_name_mappings_;
-        std::unordered_map<std::string, std::string> dbc_ros_signal_name_mappings_;
+        std::unique_ptr<ros_babel_fish::BabelFish> fish_; // Babelfish instance for loading/populating message definitions
+        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishPublisher>> publishers_; // Lookup publisher from PGN
+        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishSubscription>> subscribers_; // Lookup subscriber from ROS message name
+        std::unordered_map<std::string, std::uint32_t> ros_name_pgn_mappings_; // Lookup CAN message ID from ROS message type
+        std::unordered_map<uint32_t, std::string> pgn_ros_name_mappings_;
         DbcParser dbc_parser_;
 
         /**
-            * @brief Strips characters other than [A-Za-z0-9].
-            * @return the modified string
-            */
+         * @brief Sets up ROS publishers and subscribers for every message in the DBC.
+         *
+         * For every message in the DBC which has an associated ROS type, a publisher (CAN -> ROS) is created with a
+         * topic following the pattern `msg_topic_prefix/sensor_name/key_message`, and a subscriber (ROS -> CAN) with
+         * the pattern `msg_topic_prefix/sensor_name/key_message/tx`.
+         *
+         * @param msg_topic_prefix prefix to apply before message topics
+         */
+        void configure_publishers_subscribers(const std::string& msg_topic_prefix);
+
+        /**
+         * @brief Strips characters other than [A-Za-z0-9].
+         * @return the modified string
+         */
         static std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
          std::string result;
          result.reserve(dbc_message_name.size());
@@ -176,6 +137,69 @@ namespace ros2_j1939_babbler {
          return result;
         }
     };
+
+    inline void tag_invoke(
+        can::def_bo_cpo, DbcParser& this_,
+        uint32_t msg_id, std::string msg_name, size_t msg_size, size_t transmitter_ord
+    ) {
+        MessageDefinition info{
+            .signals = std::unordered_map<std::string, PhysicalValue>{},
+            .name = std::move(msg_name),
+            .dlc = static_cast<uint8_t>(msg_size)
+        };
+        this_.messages.emplace(msg_id & PGN_MASK, std::move(info));
+    }
+
+    inline void tag_invoke(
+            can::def_sg_cpo, DbcParser &this_,
+            uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
+            unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
+            double sg_factor, double sg_offset, double sg_min, double sg_max,
+            std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
+        ) {
+        message_id = message_id & PGN_MASK;
+        if (!this_.messages.contains(message_id)) {
+            throw std::runtime_error((std::ostringstream{}
+                << "Signal must not be defined before message\n"
+                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                << "Signal: '" << sg_name << "'").str());
+        }
+        can::sig_codec codec{sg_start_bit, sg_size, sg_byte_order, sg_sign};
+        can::tr_signal signal{sg_name, codec, std::optional<int64_t>(sg_mux_switch_val)};
+        PhysicalValue value{
+            .codec = codec,
+            .signal{std::move(signal)},
+            .factor = sg_factor,
+            .value_offset = sg_offset,
+            .size = sg_size,
+            .min = sg_min,
+            .max = sg_max,
+            .is_signed = sg_sign == '-'
+        };
+        this_.messages[message_id].signals.emplace(sg_name, std::move(value));
+        RCLCPP_INFO(rclcpp::get_logger("a"), "DHKSAL");
+    }
+
+    inline void tag_invoke(
+        can::def_sig_valtype_cpo, DbcParser &this_,
+        unsigned message_id, std::string sg_name, unsigned sg_ext_val_type
+    ) {
+        message_id = message_id & PGN_MASK;
+        if (!this_.messages.contains(message_id)) {
+            throw std::runtime_error((std::ostringstream{}
+                << "Signal value type must not be defined before message\n"
+                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                << "Signal: '" << sg_name << "'").str());
+        }
+        if (!this_.messages.at(message_id).signals.contains(sg_name)) {
+            throw std::runtime_error((std::ostringstream{}
+                << "Signal value type must not be defined before signal itself\n"
+                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                << "Signal: '" << sg_name << "'").str());
+        }
+        this_.messages[message_id].signals.at(sg_name).signal.value_type(sg_ext_val_type);
+    }
+
 } // namespace ros2_j1939_babbler
 
 #endif // ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_

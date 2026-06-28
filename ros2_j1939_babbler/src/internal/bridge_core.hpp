@@ -40,11 +40,14 @@
 #include <sstream>
 #include <utility>
 
-constexpr inline uint32_t PFPS_MASK = 0x00FFFF00u; // Note doesn't include data page, NewEagle limitation?
+constexpr inline uint32_t PGN_MASK = 0x03FFFF00u;
+constexpr inline uint32_t PF_MASK = 0x00FF0000u;
+constexpr inline uint32_t PS_MASK = 0x0000FF00u;
 constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
+constexpr inline uint32_t PDU2_PF_BOUNDARY = 0xF0; // Messages with PF >= this are PDU2
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals; // TODO: Can get rid of?
 
 namespace ros2_j1939_babbler {
     /**
@@ -102,7 +105,7 @@ namespace ros2_j1939_babbler {
             // setup subscriber, bind rxFrame
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
                     this->can_sub_topic_, 500,
-                    [this](const can_msgs::msg::Frame::SharedPtr msg) { rxFrame(std::forward<decltype(msg)>(msg)); }
+                    [this](std::unique_ptr<can_msgs::msg::Frame> message) { receive_frame(std::move(message)); }
             );
             this->pub_can_ =
                     node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
@@ -123,7 +126,7 @@ namespace ros2_j1939_babbler {
          *
          * @param MSG CAN message to handle
          */
-        void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG) { static_cast<T*>(this)->rxFrame(MSG); }
+        void receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) { static_cast<T*>(this)->receive_frame(std::move(message)); }
 
         // DATABASE MANAGEMENT FUNCTIONS //
         /**
@@ -197,9 +200,16 @@ namespace ros2_j1939_babbler {
         */
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
+
+            uint8_t pf = id & PF_MASK;
+            bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
+            bool addressed_to_us = is_pdu2 || (id & PF_MASK) == device_ID_;
+            if (!addressed_to_us) { return false; }
+            //TODO: Support J1939 properly in fi
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
                 pass = (id & msg_filter_masks_[i]) == (msg_filter_ids_[i] & msg_filter_masks_[i]);
             }
+
             return pass;
         }
 
@@ -221,8 +231,8 @@ namespace ros2_j1939_babbler {
         NewEagle::Dbc dbw_dbc_db_;                                      // new eagle dbc database
         std::unordered_map<uint32_t, NewEagle::DbcMessage> dbc_id_msg_map_;       // Map of message IDs to C++ message objects
         std::map<std::string, NewEagle::DbcMessage> dbc_name_msg_map_;  // Map of message names to C++ message objects
-        rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr sub_can_; // ROS subscriber to sub_topic_can_
-        rclcpp::Publisher<can_msgs::msg::Frame>::SharedPtr pub_can_;    // ROS publisher to pub_topic_can_
+        std::shared_ptr<rclcpp::Subscription<can_msgs::msg::Frame>> sub_can_; // ROS subscriber to sub_topic_can_
+        std::shared_ptr<rclcpp::Publisher<can_msgs::msg::Frame>> pub_can_;    // ROS publisher to pub_topic_can_
     };
 } // namespace ros2_j1939_babbler
 
