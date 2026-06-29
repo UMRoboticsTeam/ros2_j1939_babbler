@@ -18,6 +18,7 @@
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>libstatistics-collector</depend>
 
   <depend>can_dbc_parser</depend>
   <depend>ros_babel_fish</depend>

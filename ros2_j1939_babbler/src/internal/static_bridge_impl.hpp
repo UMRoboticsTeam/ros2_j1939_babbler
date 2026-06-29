@@ -54,7 +54,7 @@ namespace ros2_j1939_babbler {
 
     private:
         // Structure holding publishers and handling dispatching messages to them
-        std::shared_ptr<ros2_j1939_babbler_msgs::DispatchTable> publisher_dispatch_table_;
+        std::unique_ptr<ros2_j1939_babbler_msgs::DispatchTable> publisher_dispatch_table_;
 
         /**
          * @brief Creates a publisher for each message type.

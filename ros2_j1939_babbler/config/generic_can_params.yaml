@@ -8,4 +8,4 @@
     can_pub_topic: "/to_can_bus"    # ros2_socketcan write-to-can topic
     msg_package: "ros2_j1939_babbler_msgs" # package containing message definitions
 
-    dbw_dbc_file: "/ws2/ros2_j1939_babbler/ros2_j1939_babbler_msgs/Messages.dbc"          # name of the user-provide dbc file under /launch
+    dbw_dbc_file: "ros2_j1939_babbler_msgs/Messages.dbc"          # name of the user-provide dbc file under /launch

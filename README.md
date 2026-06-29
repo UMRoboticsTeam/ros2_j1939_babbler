@@ -21,8 +21,8 @@ An example of the generated header is shown below. The templates to complete the
 As templates are extensively used as part of the compile-time implementation, the PIMPL technique is used to prevent
 implementation details from leaking into public headers.
 
-## Dependencies
--  Python and cantools package
+## Non-ROS Build Dependencies
+- Python and cantools package
 - If compiling the Babel Bridge, You must have the Boost Fusion and Spirit headers available
   - These are header only libraries, so are not required at runtime
 
