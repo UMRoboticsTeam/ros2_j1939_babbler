@@ -17,16 +17,22 @@ set(C_TYPE_DEFINITIONS_SOURCE_PATH "${GENERATED_SOURCE_OUTPUT_FOLDER}/can_messag
 
 set(TYPE_CONVERSION_LIBRARY_NAME ros2_j1939_babbler_msgs_type_conversions)
 
+set(CMAKE_CXX_STANDARD 14)
+
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif ()
 
 # find dependencies
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+        builtin_interfaces
+        std_msgs
+        rosidl_default_generators
+)
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_auto REQUIRED)
-find_package(builtin_interfaces REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
+foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
+    find_package(${Dependency} REQUIRED)
+endforeach()
 
 # Run our python script to generate the ROS message definitions and conversion functions
 execute_process(
