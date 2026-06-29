@@ -41,13 +41,13 @@ namespace ros2_j1939_babbler {
     };
 
     struct MessageDefinition {
-        std::unordered_map<std::string, PhysicalValue> signals;
+        std::unordered_map<std::string, PhysicalValue> signals; // Maps signal name to signal info
         std::string name;
         uint8_t dlc;
     };
 
-    struct DbcParser {
-        std::unordered_map<uint32_t, MessageDefinition> messages;
+    struct DbcDatabase {
+        std::unordered_map<uint32_t, MessageDefinition> messages; // Maps PGN to message definition
     };
 
     /**
@@ -92,7 +92,7 @@ namespace ros2_j1939_babbler {
         std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishSubscription>> subscribers_; // Lookup subscriber from ROS message name
         std::unordered_map<std::string, std::uint32_t> ros_name_pgn_mappings_; // Lookup CAN message ID from ROS message type
         std::unordered_map<uint32_t, std::string> pgn_ros_name_mappings_;
-        DbcParser dbc_parser_;
+        DbcDatabase dbc_parser_;
 
         /**
          * @brief Sets up ROS publishers and subscribers for every message in the DBC.
@@ -138,67 +138,23 @@ namespace ros2_j1939_babbler {
         }
     };
 
-    inline void tag_invoke(
-        can::def_bo_cpo, DbcParser& this_,
+    void tag_invoke(
+        can::def_bo_cpo, DbcDatabase &this_,
         uint32_t msg_id, std::string msg_name, size_t msg_size, size_t transmitter_ord
-    ) {
-        MessageDefinition info{
-            .signals = std::unordered_map<std::string, PhysicalValue>{},
-            .name = std::move(msg_name),
-            .dlc = static_cast<uint8_t>(msg_size)
-        };
-        this_.messages.emplace(msg_id & PGN_MASK, std::move(info));
-    }
+    );
 
-    inline void tag_invoke(
-            can::def_sg_cpo, DbcParser &this_,
-            uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
-            unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
-            double sg_factor, double sg_offset, double sg_min, double sg_max,
-            std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
-        ) {
-        message_id = message_id & PGN_MASK;
-        if (!this_.messages.contains(message_id)) {
-            throw std::runtime_error((std::ostringstream{}
-                << "Signal must not be defined before message\n"
-                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
-                << "Signal: '" << sg_name << "'").str());
-        }
-        can::sig_codec codec{sg_start_bit, sg_size, sg_byte_order, sg_sign};
-        can::tr_signal signal{sg_name, codec, std::optional<int64_t>(sg_mux_switch_val)};
-        PhysicalValue value{
-            .codec = codec,
-            .signal{std::move(signal)},
-            .factor = sg_factor,
-            .value_offset = sg_offset,
-            .size = sg_size,
-            .min = sg_min,
-            .max = sg_max,
-            .is_signed = sg_sign == '-'
-        };
-        this_.messages[message_id].signals.emplace(sg_name, std::move(value));
-        RCLCPP_INFO(rclcpp::get_logger("a"), "DHKSAL");
-    }
+    void tag_invoke(
+        can::def_sg_cpo, DbcDatabase &this_,
+        uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
+        unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
+        double sg_factor, double sg_offset, double sg_min, double sg_max,
+        std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
+    );
 
-    inline void tag_invoke(
-        can::def_sig_valtype_cpo, DbcParser &this_,
+    void tag_invoke(
+        can::def_sig_valtype_cpo, DbcDatabase &this_,
         unsigned message_id, std::string sg_name, unsigned sg_ext_val_type
-    ) {
-        message_id = message_id & PGN_MASK;
-        if (!this_.messages.contains(message_id)) {
-            throw std::runtime_error((std::ostringstream{}
-                << "Signal value type must not be defined before message\n"
-                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
-                << "Signal: '" << sg_name << "'").str());
-        }
-        if (!this_.messages.at(message_id).signals.contains(sg_name)) {
-            throw std::runtime_error((std::ostringstream{}
-                << "Signal value type must not be defined before signal itself\n"
-                << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
-                << "Signal: '" << sg_name << "'").str());
-        }
-        this_.messages[message_id].signals.at(sg_name).signal.value_type(sg_ext_val_type);
-    }
+    );
 
 } // namespace ros2_j1939_babbler
 

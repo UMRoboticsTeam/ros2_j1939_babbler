@@ -60,6 +60,7 @@ Note that the default ID/mask pair functions as an all-pass filter.
 - Replace `can_dbc_parser` with a compile-time mapping in static bridge
   - Ideally supports enums as well
 - Extend to support plain CAN messages
+- Extend to support multiplexed messages
 - Fix address claim sequence
 - J1939 TP message support
 - Clean up remaining ros2_j1939 code

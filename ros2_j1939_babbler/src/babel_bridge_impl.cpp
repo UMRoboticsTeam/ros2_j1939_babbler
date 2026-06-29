@@ -27,8 +27,6 @@
 namespace {
     enum class IntegerLengths;
 
-    IntegerLengths ceil_bits(const uint8_t bit_length);
-
     void putSignalInRosMessage(
         ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
         const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
@@ -48,6 +46,8 @@ namespace {
                       const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data,
                       const rclcpp::Logger &logger);
 
+    IntegerLengths ceil_bits(const uint8_t bit_length);
+
     std::string read_file(const std::string &dbc_path);
 } // namespace
 
@@ -66,7 +66,6 @@ namespace ros2_j1939_babbler {
         this->configure_publishers_subscribers(msg_topic_prefix_);
         RCLCPP_INFO(node_->get_logger(), "Setup ROS topics!");
     }
-
 
     BabelBridge::Impl::~Impl() = default;
 
@@ -100,7 +99,8 @@ namespace ros2_j1939_babbler {
                 const std::unordered_map<std::string, PhysicalValue> &signals_map = it->second.signals;
                 for (const auto &signal_info: signals_map | std::views::values) {
                     putSignalInRosMessage(
-                        can_data[dbc_signal_name_to_ros(signal_info.signal.name())], message->data, signal_info, node_->get_logger()
+                        can_data[dbc_signal_name_to_ros(signal_info.signal.name())], message->data, signal_info,
+                        node_->get_logger()
                     );
                 }
 
@@ -134,10 +134,11 @@ namespace ros2_j1939_babbler {
         can_message->header.stamp = node_->now();
         can_message->header.frame_id = sensor_name_;
         can_message->id = pgn | device_ID_;
-        can_message->dlc =  message_definition.dlc;
+        can_message->dlc = message_definition.dlc;
 
         for (const auto &signal_info: message_definition.signals | std::views::values) {
-            putSignalInCanMessage((*message)[dbc_signal_name_to_ros(signal_info.signal.name())], can_message->data, signal_info, node_->get_logger());
+            putSignalInCanMessage((*message)[dbc_signal_name_to_ros(signal_info.signal.name())], can_message->data,
+                                  signal_info, node_->get_logger());
         }
 
         pub_can_->publish(std::move(can_message));
@@ -146,17 +147,17 @@ namespace ros2_j1939_babbler {
     // BEGIN MANAGEMENT FUNCTIONS //
 
     void BabelBridge::Impl::configure_publishers_subscribers(const std::string &msg_topic_prefix) {
-        RCLCPP_INFO(node_->get_logger(), "AAA");
         for (const auto &[pgn, message_definition]: dbc_parser_.messages) {
-            RCLCPP_INFO(node_->get_logger(), "AAAB");
-            const std::string &unprefixed_ros_message_name = dbc_message_name_to_ros(message_definition.name);
+            const std::string unprefixed_ros_message_name = dbc_message_name_to_ros(message_definition.name);
             std::string message_name =
                     (std::ostringstream{} << msg_package_ << "/msg/" << unprefixed_ros_message_name).str();
             RCLCPP_DEBUG_STREAM(node_->get_logger(), "Configuring Publishers - found PGN: " << pgn);
             RCLCPP_DEBUG_STREAM(node_->get_logger(), "Attempting to load '" << message_name << "'");
+
             try {
-                // There is a missing @throws marker in the documentation for ros_babel_fish:::BabelFish::create_publisher, but it
-                //      raises BabbleFishException if the type cannot be found
+                // There is a missing @throws marker in the documentation for
+                //      ros_babel_fish:::BabelFish::create_publisher, but it raises BabbleFishException if the type
+                //      cannot be found
                 std::string topic_name =
                         (std::ostringstream{} << msg_topic_prefix
                          << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
@@ -166,7 +167,9 @@ namespace ros2_j1939_babbler {
                         fish_->create_publisher(*node_, topic_name, message_name, 20, rclcpp::PublisherOptions{});
                 subscribers_[pgn] = fish_->create_subscription(
                     *node_, topic_name + "/tx", message_name, 20,
-                    [this](std::unique_ptr<ros_babel_fish::CompoundMessage> message) { transmit_frame(std::move(message)); }
+                    [this](std::unique_ptr<ros_babel_fish::CompoundMessage> message) {
+                        transmit_frame(std::move(message));
+                    }
                 );
 
                 pgn_ros_name_mappings_.emplace(pgn, message_name);
@@ -186,6 +189,101 @@ namespace ros2_j1939_babbler {
         }
     }
 
+    // Note these callbacks must be in the same namespace as the can::parse_dbc call
+
+    /**
+     * Callback for message definitions (BO_ tags) in the DBC file.
+     *
+     * @param this_ database instance
+     * @param msg_id CAN ID of the message
+     * @param msg_name name of the message
+     * @param msg_size DLC of the message
+     */
+    void tag_invoke(
+        can::def_bo_cpo, ros2_j1939_babbler::DbcDatabase &this_,
+        uint32_t msg_id, std::string msg_name, size_t msg_size, size_t /*transmitter_ord*/
+    ) {
+        ros2_j1939_babbler::MessageDefinition info{
+            .signals = std::unordered_map<std::string, ros2_j1939_babbler::PhysicalValue>{},
+            .name = std::move(msg_name),
+            .dlc = static_cast<uint8_t>(msg_size)
+        };
+        this_.messages.emplace(msg_id & PGN_MASK, std::move(info));
+    }
+
+    /**
+     * Callback for signal definitions (SG_ tags) in the DBC file.
+     *
+     * @param this_ database instance
+     * @param message_id CAN ID of the message this signal belongs to
+     * @param sg_mux_switch_val nullopt if signal is not multipliexed, or multiplexor ID if it is
+     * @param sg_name name of the signal
+     * @param sg_start_bit bit offset of the signal within the CAN frame's payload
+     * @param sg_size number of bits this signal uses
+     * @param sg_byte_order whether signal is big or little endian
+     * @param sg_sign whether the signal is signed
+     * @param sg_factor scaling factor to apply
+     * @param sg_offset offset to apply, note applied after scaling when decoding
+     * @param sg_min lower limit for value
+     * @param sg_max upper limit for value
+     */
+    void tag_invoke(
+        can::def_sg_cpo, ros2_j1939_babbler::DbcDatabase &this_,
+        uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
+        unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
+        double sg_factor, double sg_offset, double sg_min, double sg_max,
+        std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
+    ) {
+        message_id = message_id & PGN_MASK;
+        if (!this_.messages.contains(message_id)) {
+            throw std::runtime_error((std::ostringstream{}
+                                      << "Signal must not be defined before message\n"
+                                      << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                                      << "Signal: '" << sg_name << "'").str());
+        }
+        can::sig_codec codec{sg_start_bit, sg_size, sg_byte_order, sg_sign};
+        can::tr_signal signal{sg_name, codec, std::optional<int64_t>(sg_mux_switch_val)};
+        ros2_j1939_babbler::PhysicalValue value{
+            .codec = codec,
+            .signal{std::move(signal)},
+            .factor = sg_factor,
+            .value_offset = sg_offset,
+            .size = sg_size,
+            .min = sg_min,
+            .max = sg_max,
+            .is_signed = sg_sign == '-'
+        };
+        this_.messages[message_id].signals.emplace(sg_name, std::move(value));
+    }
+
+    /**
+     * Callback for signal value type definitions (SG_VALTYPE_ tags) in the DBC file.
+     *
+     * @param this_ database instance
+     * @param message_id CAN ID of the message this signal belongs to
+     * @param sg_name name of the signal
+     * @param sg_ext_val_type extended value type for the signal
+     */
+    void tag_invoke(
+        can::def_sig_valtype_cpo, ros2_j1939_babbler::DbcDatabase &this_,
+        unsigned message_id, std::string sg_name, unsigned sg_ext_val_type
+    ) {
+        message_id = message_id & PGN_MASK;
+        if (!this_.messages.contains(message_id)) {
+            throw std::runtime_error((std::ostringstream{}
+                                      << "Signal value type must not be defined before message\n"
+                                      << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                                      << "Signal: '" << sg_name << "'").str());
+        }
+        if (!this_.messages.at(message_id).signals.contains(sg_name)) {
+            throw std::runtime_error((std::ostringstream{}
+                                      << "Signal value type must not be defined before signal itself\n"
+                                      << "Message ID: 0x" << std::hex << std::to_string(message_id) << "\n"
+                                      << "Signal: '" << sg_name << "'").str());
+        }
+        this_.messages[message_id].signals.at(sg_name).signal.value_type(sg_ext_val_type);
+    }
+
 } // namespace ros2_j1939_babbler
 
 namespace {
@@ -194,6 +292,14 @@ namespace {
      */
     enum class IntegerLengths { b8, b16, b32, b64 };
 
+    /**
+     * Determine the type of a CAN signal and translate the value into a signal of a ROS message
+     *
+     * @param ros_signal ros_babel_fish::ValueMessage<T> to put decoded value into
+     * @param can_data Buffer to get encoded signal from
+     * @param can_signal Signal encoding information
+     * @param logger ROS logger to use for debug information
+     */
     void putSignalInRosMessage(
         ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
         const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
@@ -265,6 +371,14 @@ namespace {
         }
     }
 
+    /**
+     * Determine the type of a CAN signal and translate the value into the relevant portion of the CAN message's buffer.
+     *
+     * @param ros_signal ros_babel_fish::ValueMessage<T> containing the value to put into the CAN message
+     * @param can_data Buffer to put encoded signal into
+     * @param can_signal Signal encoding information
+     * @param logger ROS logger to use for debug information
+     */
     void putSignalInCanMessage(
         const ros_babel_fish::Message &ros_signal, std::array<uint8_t, 8> &can_data,
         const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger
@@ -326,6 +440,16 @@ namespace {
         }
     }
 
+
+    /**
+     * Decodes the relevant portion of a CAN message into a signal of a ROS message.
+     *
+     * @tparam T type of data in ROS message
+     * @param ros_signal ros_babel_fish::ValueMessage<T> to put decoded value into
+     * @param raw_value Full payload of the CAN frame
+     * @param can_signal Signal encoding information
+     * @param logger ROS logger to use for debug information
+     */
     template<typename T>
     void decodeAndPut(ros_babel_fish::Message &ros_signal, uint64_t raw_value,
                       const ros2_j1939_babbler::PhysicalValue &can_signal, const rclcpp::Logger &logger) {
@@ -340,6 +464,15 @@ namespace {
         ros_signal = data;
     }
 
+    /**
+     * Encodes the value held in a ROS message's signal into the relevant portion of a CAN message.
+     *
+     * @tparam T type of data in ROS message
+     * @param ros_signal ros_babel_fish::ValueMessage<T> containing the value to encode
+     * @param can_signal Signal encoding information
+     * @param can_data Buffer to put encoded signal into
+     * @param logger ROS logger to use for debug information
+     */
     template<typename T>
     void encodeAndPut(const ros_babel_fish::Message &ros_signal,
                       const ros2_j1939_babbler::PhysicalValue &can_signal, std::array<uint8_t, 8> can_data,
@@ -353,14 +486,18 @@ namespace {
                 min << ", max=" << can_signal.max
             );
         }
-        T raw_value = (ros_signal.as<ros_babel_fish::ValueMessage<T> >().getValue() - can_signal.value_offset) /
+        uint64_t raw_value = (ros_signal.as<ros_babel_fish::ValueMessage<T> >().getValue() - can_signal.value_offset) /
                       can_signal.factor;
-        can_signal.codec(*reinterpret_cast<uint64_t *>(&raw_value), can_data.data());
+        can_signal.codec(raw_value, can_data.data());
     }
+
+
 
     /**
      * @brief Determines the ROS integer type needed to hold an integer of a certain bit length.
+     *
      * @param bit_length the number of bits the integer to store is composed of
+     * @return Narrowest valid IntegerLengths value
      */
     IntegerLengths ceil_bits(const uint8_t bit_length) {
         if (bit_length <= 8) { return IntegerLengths::b8; }
@@ -370,10 +507,16 @@ namespace {
         throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
     }
 
-    std::string read_file(const std::string &dbc_path) {
-        std::ifstream dbc_content(dbc_path);
+    /**
+     * Reads the contents of a file into a string.
+     *
+     * @param dbc_path Path to the file to read
+     * @return Contents of the file
+     */
+    std::string read_file(const std::string &file_path) {
+        std::ifstream file_content(file_path);
         std::ostringstream ss;
-        ss << dbc_content.rdbuf();
+        ss << file_content.rdbuf();
         return ss.str();
     }
 } // namespace
