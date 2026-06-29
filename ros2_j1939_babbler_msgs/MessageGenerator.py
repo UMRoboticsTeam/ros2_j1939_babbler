@@ -330,6 +330,8 @@ if __name__ == "__main__":
     type_conversion_header_export_path = sys.argv[3]
     c_type_def_header_export_folder = sys.argv[4]
     c_type_def_source_export_folder = sys.argv[5]
+    c_type_def_header_file_path = f"{c_type_def_header_export_folder}/{C_TYPE_DEFINITION_FILE_BASENAME}.h"
+    c_type_def_source_file_path = f"{c_type_def_source_export_folder}/{C_TYPE_DEFINITION_FILE_BASENAME}.c"
 
     print("Ensuring output folders exist")
     os.makedirs(os.path.dirname(type_conversion_header_export_path), exist_ok=True)
@@ -342,15 +344,15 @@ if __name__ == "__main__":
     header, source, _, _ = cantools.database.can.c_source.generate(
         db,
         C_TYPE_DEFINITION_FILE_BASENAME,
-        c_type_def_header_export_folder,
-        c_type_def_source_export_folder,
+        c_type_def_header_file_path,
+        c_type_def_source_file_path,
         "",
         True,
         False,
         False,
         None,
         False)
-    with open(f"{sys.argv[4]}/{C_TYPE_DEFINITION_FILE_BASENAME}.h", "w") as header_file:
+    with open(c_type_def_header_file_path, "w") as header_file:
         header_file.write(header)
-    with open(f"{sys.argv[5]}/{C_TYPE_DEFINITION_FILE_BASENAME}.c", "w") as source_file:
+    with open(c_type_def_source_file_path, "w") as source_file:
         source_file.write(source)

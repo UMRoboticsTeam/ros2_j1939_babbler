@@ -15,6 +15,8 @@ set(C_TYPE_DEFINITIONS_HEADER_PATH "${GENERATED_HEADER_OUTPUT_FOLDER}/can_messag
 set(TYPE_CONVERSION_HELPERS_HEADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}/type_conversion_helpers.hpp")
 set(C_TYPE_DEFINITIONS_SOURCE_PATH "${GENERATED_SOURCE_OUTPUT_FOLDER}/can_message_types.c")
 
+set(TYPE_CONVERSION_LIBRARY_NAME ros2_j1939_babbler_msgs_type_conversions)
+
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif ()
@@ -47,9 +49,22 @@ rosidl_generate_interfaces(${PROJECT_NAME}
         DEPENDENCIES std_msgs builtin_interfaces
 )
 
-# Compile our C type definitions in with the ROS messages lib
-target_sources(${PROJECT_NAME} PRIVATE
+# Compile our C type definitions in with a new library in the package
+rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
+ament_auto_add_library(${TYPE_CONVERSION_LIBRARY_NAME} SHARED
         ${C_TYPE_DEFINITIONS_SOURCE_PATH}
+)
+target_include_directories(${TYPE_CONVERSION_LIBRARY_NAME} PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
+)
+target_link_libraries(${TYPE_CONVERSION_LIBRARY_NAME} PUBLIC "${cpp_typesupport_target}")
+ament_target_dependencies(${TYPE_CONVERSION_LIBRARY_NAME} PUBLIC ${DEPENDENCIES})
+
+# Export dependencies downstream to client packages.
+ament_export_dependencies(
+        rosidl_default_runtime
+        ${DEPENDENCIES}
 )
 
 if (BUILD_TESTING)
@@ -75,4 +90,4 @@ install(
 
 ament_export_dependencies(rosidl_default_runtime)
 
-ament_package()
+ament_auto_package()
