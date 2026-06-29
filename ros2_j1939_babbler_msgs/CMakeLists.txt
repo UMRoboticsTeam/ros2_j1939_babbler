@@ -25,6 +25,8 @@ endif ()
 
 # find dependencies
 set(THIS_PACKAGE_INCLUDE_DEPENDS
+        ament_cmake
+        ament_cmake_auto
         builtin_interfaces
         std_msgs
         rosidl_default_generators
