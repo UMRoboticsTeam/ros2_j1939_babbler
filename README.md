@@ -36,12 +36,12 @@ implementation details from leaking into public headers.
 4. If you wish to use the static_bridge, recompile and install the ros2_j1939_babbler package, and run the static_bridge node
    - e.g. `ros2 run ros2_j1939_babbler static_bridge --ros-args -p dbw_dbc_file:=./ros2_j1939_babbler_msgs/Messages.dbc -p msg_package:=ros2_j1939_babbler_msgs ...and so on`
 
-Both nodes are offered as components if you desire to run them as part of a composable node container. 
+Both nodes are offered as components if you desire to run them as part of a composable node container.
 
 ## ROS Parameters
 | Parameter        | Type        | Description                                                                                                | Default | babel_bridge | static_bridge |
 |------------------|-------------|------------------------------------------------------------------------------------------------------------|---------|--------------|---------------|
-| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &check;       |
+| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &cross;       |
 | msg_package      | string      | ROS package to load message definitions from                                                               | empty   | &check;      | &cross;       |
 | frame_id         | string      | TF2 frame designator                                                                                       | empty   | &check;      | &check;       |
 | sensor_name      | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
@@ -55,7 +55,6 @@ Note that the default ID/mask pair functions as an all-pass filter.
 
 
 ## Future Work
-- Implement other direction: converting ROS messages to J1939 messages 
 - Eliminate/clarify overlap between `sensor_name` and `msg_topic_prefix` parameters
 - Replace `can_dbc_parser` with a compile-time mapping in static bridge
   - Ideally supports enums as well

@@ -1,7 +1,6 @@
 /*
- * Copyright 2024 Construction Engineering Research Laboratory (CERL)
- * Engineer Reseach and Development Center (ERDC)
- * U.S. Army Corps of Engineers
+ * Copyright 2026 University of Manitoba Robotics Team
+ * Noah Reeder
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
-/*
- * Modified by Noah Reeder on 2026-05-07
- * Modifications Copyright 2026 Noah Reeder, University of Manitoba Robotics Team.
  */
 
 #include "internal/static_bridge_impl.hpp"

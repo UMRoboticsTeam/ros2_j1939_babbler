@@ -3,8 +3,8 @@
 <package format="3">
   <name>ros2_j1939_babbler</name>
   <version>0.1.0</version>
-  <description>Generic Reference CAN-interfacing package</description>
-  <maintainer email="arturo.saucedo@erdc.dren.mil">Arturo Saucedo</maintainer>
+  <description>Translation bridge between ROS and J1939 messages with support for runtime type deduction</description>
+  <maintainer email="noahreederatc@gmail.com">Noah Reeder</maintainer>
   <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
