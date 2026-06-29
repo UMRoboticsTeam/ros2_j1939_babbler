@@ -69,7 +69,7 @@ namespace ros2_j1939_babbler {
 
     BabelBridge::Impl::~Impl() = default;
 
-    void BabelBridge::Impl::receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) {
+    void BabelBridge::Impl::on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
         RCLCPP_DEBUG(
             node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error,
             message->id,
@@ -109,7 +109,7 @@ namespace ros2_j1939_babbler {
         }
     }
 
-    void BabelBridge::Impl::transmit_frame(std::unique_ptr<ros_babel_fish::CompoundMessage> message) {
+    void BabelBridge::Impl::on_ros_to_can(std::unique_ptr<ros_babel_fish::CompoundMessage> message) {
         const auto pgn_lookup_it = ros_name_pgn_mappings_.find(message->name());
         const bool pgn_found = pgn_lookup_it != ros_name_pgn_mappings_.end();
         if (!pgn_found) {
@@ -168,7 +168,7 @@ namespace ros2_j1939_babbler {
                 subscribers_[pgn] = fish_->create_subscription(
                     *node_, topic_name + "/tx", message_name, 20,
                     [this](std::unique_ptr<ros_babel_fish::CompoundMessage> message) {
-                        transmit_frame(std::move(message));
+                        on_ros_to_can(std::move(message));
                     }
                 );
 

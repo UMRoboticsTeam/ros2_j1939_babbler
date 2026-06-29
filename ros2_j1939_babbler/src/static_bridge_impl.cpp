@@ -32,40 +32,22 @@ namespace ros2_j1939_babbler {
 
     StaticBridge::Impl::~Impl() = default;
 
-    void StaticBridge::Impl::receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) {
+    void StaticBridge::Impl::on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
         RCLCPP_DEBUG(
-                node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error, message->id,
-                message->id & 0x000000FFu
+            node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error,
+            message->id,
+            message->id & 0x000000FFu
         );
-        // if message is not a request, error, and matches device ID
-        if (!message->is_rtr && !message->is_error && (device_ID_ == (message->id & 0x000000FFu) && filter(message->id))) {
-            // local const to store incoming message
+        // If message is a request frame or error frame, we ignore it
+        // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the
+        //    message isn't in there we ignore and let others endpoints handle
+        if (!message->is_rtr && !message->is_error && filter(message->id)) {
+            const uint32_t pgn = message->id & PGN_MASK;
             RCLCPP_DEBUG(
-                    node_->get_logger(), "Filtering message; sa:%d, count:%zu", message->id & 0x00FFFF00u,
-                    dbc_id_msg_map_.count(message->id & 0x00FFFF00u)
+                node_->get_logger(), "Message passed filter"
             );
-            // if the message type / PGN is found in the dbc
-            if (dbc_id_msg_map_.count(message->id & 0x00FFFF00u)) {
-                auto message_copy = std::make_shared<can_msgs::msg::Frame>(*message); // TODO: Fix to not need this
-                // translate the message data
-                NewEagle::DbcMessage eagle_message = dbc_id_msg_map_[message->id & PGN_MASK];
-                eagle_message.SetFrame(message_copy);
 
-                // Transform the fields map
-                std::unordered_map<std::string, double> fields;
-                for (const auto& [key, value] : *eagle_message.GetSignals()) { fields[key] = value.GetResult(); }
-
-                // populate the local ros2 message header, frame, and message name
-                std_msgs::msg::Header header;
-                header.stamp = node_->now();
-                header.frame_id = sensor_name_;
-
-                // publish finalized message
-                publisher_dispatch_table_->runtime_dispatch(
-                        message->id & PGN_MASK, fields, std::move(header),
-                        static_cast<uint8_t>(message->id & SOURCE_ADDR_MASK)
-                );
-            }
+            publisher_dispatch_table_->runtime_dispatch(pgn, std::move(message), static_cast<uint8_t>(message->id & SOURCE_ADDR_MASK));
         }
     }
 

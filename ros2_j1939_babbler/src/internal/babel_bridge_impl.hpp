@@ -74,7 +74,7 @@ namespace ros2_j1939_babbler {
          *
          * @param MSG CAN message to handle
          */
-        void receive_frame(std::unique_ptr<can_msgs::msg::Frame> message);
+        void on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message);
 
         /**
          * @brief Handle an outgoing CAN frame.
@@ -83,7 +83,7 @@ namespace ros2_j1939_babbler {
          *
          * @param message ROS message to handle
          */
-        void transmit_frame(std::unique_ptr<ros_babel_fish::CompoundMessage> message);
+        void on_ros_to_can(std::unique_ptr<ros_babel_fish::CompoundMessage> message);
 
     private:
         std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file

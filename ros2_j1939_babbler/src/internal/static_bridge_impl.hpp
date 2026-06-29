@@ -50,7 +50,7 @@ namespace ros2_j1939_babbler {
          *
          * @param MSG CAN message to handle
          */
-        void receive_frame(std::unique_ptr<can_msgs::msg::Frame> MSG);
+        void on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> MSG);
 
     private:
         // Structure holding publishers and handling dispatching messages to them

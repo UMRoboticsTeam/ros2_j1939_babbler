@@ -151,6 +151,12 @@ namespace ros2_j1939_babbler_msgs {{
     // BEGIN AUTO-GENERATED SPECIALISATIONS
     {can_packing_functions}
     // END AUTO-GENERATED SPECIALISATIONS
+    
+    // ===== Maps C CAN message types to their unpacking function =====
+    
+    // BEGIN AUTO-GENERATED SPECIALISATIONS
+    {can_unpacking_functions}
+    // END AUTO-GENERATED SPECIALISATIONS
 
 
     // ===== Map providing DLC for each known PGN =====
@@ -175,14 +181,14 @@ INCLUDE_ROS_MESSAGE_HEADER_TEMPLATE = \
 POPULATE_ROS_TEMPLATE = \
 """
     template<>
-    inline void populateRos<msg::{ros_msg_type_name}>(msg::{ros_msg_type_name}& msg, const std::unordered_map<std::string, double>& fields)
+    inline void populateRos<msg::{ros_msg_type_name}>(msg::{ros_msg_type_name}& ros_msg, const can::{can_msg_type_name}& can_msg)
     {{\
         {signal_mappings}
     }}"""
 
 POPULATE_ROS_SIGNAL_MAPPING_TEMPLATE = \
 """
-        msg.{ros_field_name} = static_cast<{dtype}>(fields.at("{can_database_signal_name}"));"""
+        ros_msg.{ros_field_name} = can_msg.{can_signal_name};"""
 
 POPULATE_CAN_TEMPLATE = \
 """
@@ -209,6 +215,10 @@ CAN_PACK_FUNCTION_MAPPING_TEMPLATE = \
 """
     template<> inline int pack_can_message<can::{can_msg_type_name}>(uint8_t* dst_p, const struct can::{can_msg_type_name}* src_p, size_t size) {{ return {pack_function_name}(dst_p, src_p, size); }};"""
 
+CAN_UNPACK_FUNCTION_MAPPING_TEMPLATE = \
+    """
+        template<> inline int unpack_can_message<can::{can_msg_type_name}>(struct can::{can_msg_type_name}* dst_p, const uint8_t* src_p, size_t size) {{ return {unpack_function_name}(dst_p, src_p, size); }};"""
+
 PGN_DLC_MAPPING_TEMPLATE = \
 """
     template<> struct pgn_dlc_map<{pgn}> {{ static constexpr uint8_t value = {dlc}; }};"""
@@ -229,6 +239,7 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
         message_type_mappings = ""
         message_name_mappings = ""
         can_packing_functions = ""
+        can_unpacking_functions = ""
         pgn_dlc_mappings = ""
         pgns = []
 
@@ -236,6 +247,7 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
             ros_msg_type_name = MESSAGE_NAME_MASK.sub('', message.name)
             can_msg_type_name = f"{database_name}_{CodeGenMessage(message).snake_name}_t"  # Distilled from c_source.py
             pack_function_name = f"{database_name}_{CodeGenMessage(message).snake_name}_pack"  # Also distilled
+            unpack_function_name = f"{database_name}_{CodeGenMessage(message).snake_name}_unpack"  # Also distilled
             pgn = message.frame_id & PGN_MASK
 
             include_statements += INCLUDE_ROS_MESSAGE_HEADER_TEMPLATE.format(header_formatted_name = PASCAL_TO_SNAKE_CASE_CONVERTER.sub('_', ros_msg_type_name).lower())
@@ -250,16 +262,16 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
                 else: dtype = f"std::{dtype}_t"
 
                 ros_field_name = FIELD_NAME_MASK.sub('', signal.name.lower())
-                can_database_signal_name = signal.name
                 can_signal_name = CodeGenSignal(signal).snake_name  # Distilled from c_source.py
 
                 can_to_ros_signal_mappings += POPULATE_ROS_SIGNAL_MAPPING_TEMPLATE.format(ros_field_name = ros_field_name,
                                                                                           dtype = dtype,
-                                                                                          can_database_signal_name = can_database_signal_name)
+                                                                                          can_signal_name = can_signal_name)
                 ros_to_can_signal_mappings += POPULATE_CAN_SIGNAL_MAPPING_TEMPLATE.format(ros_field_name = ros_field_name,
                                                                                           can_signal_name = can_signal_name)
 
-            type_conversion_functions += POPULATE_ROS_TEMPLATE.format(ros_msg_type_name = ros_msg_type_name,
+            type_conversion_functions += POPULATE_ROS_TEMPLATE.format(can_msg_type_name = can_msg_type_name,
+                                                                      ros_msg_type_name = ros_msg_type_name,
                                                                       signal_mappings = can_to_ros_signal_mappings)
             type_conversion_functions += "\n"
             type_conversion_functions += POPULATE_CAN_TEMPLATE.format(can_msg_type_name = can_msg_type_name,
@@ -277,6 +289,8 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
 
             can_packing_functions += CAN_PACK_FUNCTION_MAPPING_TEMPLATE.format(can_msg_type_name = can_msg_type_name,
                                                                                pack_function_name =pack_function_name)
+            can_unpacking_functions += CAN_UNPACK_FUNCTION_MAPPING_TEMPLATE.format(can_msg_type_name = can_msg_type_name,
+                                                                                 unpack_function_name = unpack_function_name)
 
             pgn_dlc_mappings += PGN_DLC_MAPPING_TEMPLATE.format(pgn = pgn,
                                                                 dlc = message.length)
@@ -293,6 +307,7 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
             message_type_mappings= message_type_mappings,
             message_name_mappings = message_name_mappings,
             can_packing_functions = can_packing_functions,
+            can_unpacking_functions = can_unpacking_functions,
             pgn_dlc_mappings = pgn_dlc_mappings,
             dispatch_table_alias = dispatch_table_alias
         ))

@@ -63,7 +63,7 @@ namespace ros2_j1939_babbler {
         /**
          * Initialise structures for the bridge.
          */
-        explicit BridgeCore(rclcpp::Node* node) : node_{ node } {
+        explicit BridgeCore(rclcpp::Node *node) : node_{node} {
             RCLCPP_INFO(node_->get_logger(), "Starting Generic Can Driver...");
 
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
@@ -77,15 +77,16 @@ namespace ros2_j1939_babbler {
             msg_filter_range.integer_range = {
                 rcl_interfaces::msg::IntegerRange().set__from_value(0).set__to_value(MAX_CAN_ID)
             };
-            msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_ids", { 0 }, msg_filter_range);
-            msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_masks", { 0 }, msg_filter_range);
+            msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t> >("msg_filter_ids", {0}, msg_filter_range);
+            msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t> >(
+                "msg_filter_masks", {0}, msg_filter_range);
 
             if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
                 throw std::invalid_argument((std::ostringstream{}
                                              << "Message filter must have same number of IDs and masks, found "
                                              << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
                                              << " masks")
-                                                    .str());
+                    .str());
             }
 
             device_ID_str_ = std::to_string(device_ID_);
@@ -104,11 +105,12 @@ namespace ros2_j1939_babbler {
 
             // setup subscriber, bind rxFrame
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
-                    this->can_sub_topic_, 500,
-                    [this](std::unique_ptr<can_msgs::msg::Frame> message) { receive_frame(std::move(message)); }
+                this->can_sub_topic_, 500,
+                [this](std::unique_ptr<can_msgs::msg::Frame> message) { on_can_to_ros(std::move(message)); }
             );
             this->pub_can_ =
-                    node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
+                    node_->create_publisher<
+                        can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
 
             RCLCPP_DEBUG(node_->get_logger(), "Generic Can Driver Core configured!");
         }
@@ -126,7 +128,9 @@ namespace ros2_j1939_babbler {
          *
          * @param MSG CAN message to handle
          */
-        void receive_frame(std::unique_ptr<can_msgs::msg::Frame> message) { static_cast<T*>(this)->receive_frame(std::move(message)); }
+        void on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
+            static_cast<T *>(this)->on_can_to_ros(std::move(message));
+        }
 
         // DATABASE MANAGEMENT FUNCTIONS //
         /**
@@ -157,14 +161,15 @@ namespace ros2_j1939_babbler {
          * different address, depending on its internal logic.
         */
         void
-        generateAddressClaimAttackMsg(can_msgs::msg::Frame::SharedPtr MSG, const std::vector<uint32_t> source_addresses) {
+        generateAddressClaimAttackMsg(can_msgs::msg::Frame::SharedPtr MSG,
+                                      const std::vector<uint32_t> source_addresses) {
             // we go through each address given in the list
-            for (uint32_t address : source_addresses) {
+            for (uint32_t address: source_addresses) {
                 // we add the source address (target of the claim attack) to a 'name declaration' message
                 address += 0x18EEFF00;
                 // by sending this message with only 0s, our name takes priority,
                 // and the competing device stops publishing
-                std::array<uint8_t, 8UL> claim_data = { 0x00u, 0x00u, 0x00u, 0x00u, 0x00, 0x00, 0x00, 0x00u };
+                std::array<uint8_t, 8UL> claim_data = {0x00u, 0x00u, 0x00u, 0x00u, 0x00, 0x00, 0x00, 0x00u};
 
                 // then we just stuff the can frame with all our data
                 MSG->header.stamp = node_->now();
@@ -182,8 +187,8 @@ namespace ros2_j1939_babbler {
          * @brief formats data nicely for use in CAN frames
          */
         void createDataArray(
-                const std::vector<uint16_t> data_in, const std::vector<uint16_t> data_lengths,
-                std::array<uint8_t, 8UL>& data_out
+            const std::vector<uint16_t> data_in, const std::vector<uint16_t> data_lengths,
+            std::array<uint8_t, 8UL> &data_out
         ) {
             uint64_t data_concatenated = 0;
             uint64_t data_mask = 0x00000000000000FF;
