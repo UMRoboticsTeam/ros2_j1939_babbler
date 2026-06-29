@@ -18,12 +18,12 @@
 #ifndef ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 #define ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 
-#include "ros2_j1939_babbler/babel_bridge.hpp"
 #include "bridge_core.hpp"
+#include "ros2_j1939_babbler/babel_bridge.hpp"
 #include "v2c/v2c_transcoder.h"
 
-#include <ros_babel_fish/babel_fish.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <ros_babel_fish/babel_fish.hpp>
 
 #include <cassert>
 #include <string>
@@ -87,11 +87,12 @@ namespace ros2_j1939_babbler {
 
     private:
         std::string msg_package_; // ROS2 package containing ROS msg definitions for CAN messages described in DBC file
-        std::unique_ptr<ros_babel_fish::BabelFish> fish_; // Babelfish instance for loading/populating message definitions
-        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishPublisher>> publishers_; // Lookup publisher from PGN
-        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishSubscription>> subscribers_; // Lookup subscriber from ROS message name
-        std::unordered_map<std::string, std::uint32_t> ros_name_pgn_mappings_; // Lookup CAN message ID from ROS message type
-        std::unordered_map<uint32_t, std::string> pgn_ros_name_mappings_;
+        std::unique_ptr<ros_babel_fish::BabelFish> fish_; // Babelfish instance for runtime message definitions
+        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishPublisher>> publishers_; // PGN to publisher
+        std::unordered_map<uint32_t, std::shared_ptr<ros_babel_fish::BabelFishSubscription>>
+                subscribers_;                                                  // PGN to subscriber
+        std::unordered_map<std::string, std::uint32_t> ros_name_pgn_mappings_; // ROS message type to PGN
+        std::unordered_map<uint32_t, std::string> pgn_ros_name_mappings_;      // PGN to ROS message type
         DbcDatabase dbc_parser_;
 
         /**
@@ -110,13 +111,13 @@ namespace ros2_j1939_babbler {
          * @return the modified string
          */
         static std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
-         std::string result;
-         result.reserve(dbc_message_name.size());
-         std::copy_if(
-                 dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result),
-                 [](const unsigned char& c) { return std::isalnum(c); }
-         );
-         return result;
+            std::string result;
+            result.reserve(dbc_message_name.size());
+            std::copy_if(
+                    dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result),
+                    [](const unsigned char& c) { return std::isalnum(c); }
+            );
+            return result;
         }
 
         /**
@@ -124,38 +125,34 @@ namespace ros2_j1939_babbler {
          * @return
          */
         static std::string dbc_signal_name_to_ros(const std::string& dbc_signal_name) {
-         // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
-         std::string result;
-         result.reserve(dbc_signal_name.size());
-         std::copy_if(
-                 dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result),
-                 [](const unsigned char& c) { return std::isalnum(c) || c == '_'; }
-         );
-         std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char& c) {
-             return std::tolower(c);
-         });
-         return result;
+            // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
+            std::string result;
+            result.reserve(dbc_signal_name.size());
+            std::copy_if(
+                    dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result),
+                    [](const unsigned char& c) { return std::isalnum(c) || c == '_'; }
+            );
+            std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char& c) {
+                return std::tolower(c);
+            });
+            return result;
         }
     };
 
     void tag_invoke(
-        can::def_bo_cpo, DbcDatabase &this_,
-        uint32_t msg_id, std::string msg_name, size_t msg_size, size_t transmitter_ord
+            can::def_bo_cpo, DbcDatabase& this_, uint32_t msg_id, std::string msg_name, size_t msg_size,
+            size_t transmitter_ord
     );
 
     void tag_invoke(
-        can::def_sg_cpo, DbcDatabase &this_,
-        uint32_t message_id, std::optional<unsigned> sg_mux_switch_val, std::string sg_name,
-        unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign,
-        double sg_factor, double sg_offset, double sg_min, double sg_max,
-        std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
+            can::def_sg_cpo, DbcDatabase& this_, uint32_t message_id, std::optional<unsigned> sg_mux_switch_val,
+            std::string sg_name, unsigned sg_start_bit, unsigned sg_size, char sg_byte_order, char sg_sign, double sg_factor,
+            double sg_offset, double sg_min, double sg_max, std::string /*sg_unit*/, std::vector<size_t> /*rec_ords*/
     );
 
     void tag_invoke(
-        can::def_sig_valtype_cpo, DbcDatabase &this_,
-        unsigned message_id, std::string sg_name, unsigned sg_ext_val_type
+            can::def_sig_valtype_cpo, DbcDatabase& this_, unsigned message_id, std::string sg_name, unsigned sg_ext_val_type
     );
-
 } // namespace ros2_j1939_babbler
 
 #endif // ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_

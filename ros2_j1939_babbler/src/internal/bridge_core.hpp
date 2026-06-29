@@ -45,9 +45,7 @@ constexpr inline uint32_t PF_MASK = 0x00FF0000u;
 constexpr inline uint32_t PS_MASK = 0x0000FF00u;
 constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
-constexpr inline uint32_t PDU2_PF_BOUNDARY = 0xF0; // Messages with PF >= this are PDU2
-
-using namespace std::chrono_literals; // TODO: Can get rid of?
+constexpr inline uint32_t PDU2_PF_BOUNDARY = 0xF0;  // Messages with PF >= this are PDU2
 
 namespace ros2_j1939_babbler {
     /**
@@ -63,7 +61,7 @@ namespace ros2_j1939_babbler {
         /**
          * Initialise structures for the bridge.
          */
-        explicit BridgeCore(rclcpp::Node *node) : node_{node} {
+        explicit BridgeCore(rclcpp::Node* node) : node_{ node } {
             RCLCPP_INFO(node_->get_logger(), "Starting Generic Can Driver...");
 
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
@@ -77,21 +75,19 @@ namespace ros2_j1939_babbler {
             msg_filter_range.integer_range = {
                 rcl_interfaces::msg::IntegerRange().set__from_value(0).set__to_value(MAX_CAN_ID)
             };
-            msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t> >("msg_filter_ids", {0}, msg_filter_range);
-            msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t> >(
-                "msg_filter_masks", {0}, msg_filter_range);
+            msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_ids", { 0 }, msg_filter_range);
+            msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_masks", { 0 }, msg_filter_range);
 
             if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
                 throw std::invalid_argument((std::ostringstream{}
                                              << "Message filter must have same number of IDs and masks, found "
                                              << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
                                              << " masks")
-                    .str());
+                                                    .str());
             }
 
             device_ID_str_ = std::to_string(device_ID_);
 
-            // printing to user
             RCLCPP_INFO(node_->get_logger(), "dbw_dbc_file: %s", dbw_dbc_file_.c_str());
             RCLCPP_INFO(node_->get_logger(), "frame_id: %s", frame_id_.c_str());
             RCLCPP_INFO(node_->get_logger(), "sensor_name: %s", sensor_name_.c_str());
@@ -99,18 +95,12 @@ namespace ros2_j1939_babbler {
             RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
             RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
 
-            // setup dbc database - brings in j1939 standard
-            this->setupDatabase();
-            RCLCPP_INFO(node_->get_logger(), "Setup DBC database!");
-
-            // setup subscriber, bind rxFrame
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
-                this->can_sub_topic_, 500,
-                [this](std::unique_ptr<can_msgs::msg::Frame> message) { on_can_to_ros(std::move(message)); }
+                    this->can_sub_topic_, 500,
+                    [this](std::unique_ptr<can_msgs::msg::Frame> message) { on_can_to_ros(std::move(message)); }
             );
             this->pub_can_ =
-                    node_->create_publisher<
-                        can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
+                    node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
 
             RCLCPP_DEBUG(node_->get_logger(), "Generic Can Driver Core configured!");
         }
@@ -129,75 +119,7 @@ namespace ros2_j1939_babbler {
          * @param MSG CAN message to handle
          */
         void on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
-            static_cast<T *>(this)->on_can_to_ros(std::move(message));
-        }
-
-        // DATABASE MANAGEMENT FUNCTIONS //
-        /**
-         * @brief Instantiates a NewEagle dbc database object using the dbc file specified in params.
-         * Strips the priority and source address id from the message ID in the DBC.
-         * These stripped IDs are stored as keys in a map with the NewEagle DBC messages as values.
-         */
-        void setupDatabase() {
-            // build the new eagle dbc database
-            this->dbw_dbc_db_ = NewEagle::DbcBuilder().NewDbc(dbw_dbc_file_);
-            this->dbc_name_msg_map_ = *this->dbw_dbc_db_.GetMessages();
-            // for every message in the database, leave only PGN
-            for (auto [key, value] : dbc_name_msg_map_) {
-                // strip id of priority and source address info
-                uint32_t stripped_id = value.GetId() & 0x00FFFF00u;
-                dbc_id_msg_map_[stripped_id] = value;
-                RCLCPP_DEBUG(
-                        node_->get_logger(), "Accepting messages with stripped ID:%d from raw ID:%d", stripped_id,
-                        value.GetId()
-                );
-            }
-        }
-
-        /**
-         * @brief functions that takes list of full addresses (such as 0x0CEEFFA1) as defined in params
-         * yaml and attempts and address claim attack. It adopts the lowest value name and publishes it on
-         * that address, forcing the target device on that address to either stop publishing or move to a
-         * different address, depending on its internal logic.
-        */
-        void
-        generateAddressClaimAttackMsg(can_msgs::msg::Frame::SharedPtr MSG,
-                                      const std::vector<uint32_t> source_addresses) {
-            // we go through each address given in the list
-            for (uint32_t address: source_addresses) {
-                // we add the source address (target of the claim attack) to a 'name declaration' message
-                address += 0x18EEFF00;
-                // by sending this message with only 0s, our name takes priority,
-                // and the competing device stops publishing
-                std::array<uint8_t, 8UL> claim_data = {0x00u, 0x00u, 0x00u, 0x00u, 0x00, 0x00, 0x00, 0x00u};
-
-                // then we just stuff the can frame with all our data
-                MSG->header.stamp = node_->now();
-                MSG->header.frame_id = "can";
-                MSG->id = address;
-                MSG->is_rtr = false;
-                MSG->is_extended = true;
-                MSG->is_error = false;
-                MSG->dlc = 8;
-                MSG->data = claim_data;
-            }
-        }
-
-        /**
-         * @brief formats data nicely for use in CAN frames
-         */
-        void createDataArray(
-            const std::vector<uint16_t> data_in, const std::vector<uint16_t> data_lengths,
-            std::array<uint8_t, 8UL> &data_out
-        ) {
-            uint64_t data_concatenated = 0;
-            uint64_t data_mask = 0x00000000000000FF;
-            int size = data_in.size();
-            for (int i = 0; i < size; i++) {
-                data_concatenated = data_concatenated << data_lengths[size - 1 - i];
-                data_concatenated += data_in[size - 1 - i];
-            }
-            for (int i = 0; i < 8; i++) { data_out[i] = (data_mask & data_concatenated >> 8 * i); }
+            static_cast<T*>(this)->on_can_to_ros(std::move(message));
         }
 
         /**
@@ -210,7 +132,7 @@ namespace ros2_j1939_babbler {
             bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
             bool addressed_to_us = is_pdu2 || (id & PF_MASK) == device_ID_;
             if (!addressed_to_us) { return false; }
-            //TODO: Support J1939 properly in fi
+
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
                 pass = (id & msg_filter_masks_[i]) == (msg_filter_ids_[i] & msg_filter_masks_[i]);
             }
@@ -233,9 +155,6 @@ namespace ros2_j1939_babbler {
         std::vector<int64_t> msg_filter_ids_;   // List of ids messages must match (within a mask) to be processed
         std::vector<int64_t> msg_filter_masks_; // Parallel list of masks to apply to the filter ids
 
-        NewEagle::Dbc dbw_dbc_db_;                                      // new eagle dbc database
-        std::unordered_map<uint32_t, NewEagle::DbcMessage> dbc_id_msg_map_;       // Map of message IDs to C++ message objects
-        std::map<std::string, NewEagle::DbcMessage> dbc_name_msg_map_;  // Map of message names to C++ message objects
         std::shared_ptr<rclcpp::Subscription<can_msgs::msg::Frame>> sub_can_; // ROS subscriber to sub_topic_can_
         std::shared_ptr<rclcpp::Publisher<can_msgs::msg::Frame>> pub_can_;    // ROS publisher to pub_topic_can_
     };

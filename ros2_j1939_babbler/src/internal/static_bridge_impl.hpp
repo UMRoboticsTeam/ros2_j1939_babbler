@@ -35,7 +35,7 @@ namespace ros2_j1939_babbler {
          * @brief Initialise the node implementation.
          * @param node ROS node to interact with the ROS system through
          */
-        explicit Impl(rclcpp::Node *node);
+        explicit Impl(rclcpp::Node* node);
 
         /**
          * @brief Release resources.
@@ -64,7 +64,7 @@ namespace ros2_j1939_babbler {
          * @param msg_topic_prefix prefix to apply before message topics
          * @param transmitter_topic topic to send outgoing CAN messages to
          */
-        void configurePublishers(const std::string &msg_topic_prefix, const std::string &transmitter_topic);
+        void configurePublishers(const std::string& msg_topic_prefix, const std::string& transmitter_topic);
     };
 } // namespace ros2_j1939_babbler
 
