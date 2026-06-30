@@ -1,0 +1,10 @@
+name: Assert version is incremented
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-version:
+    uses: UMRoboticsTeam/umrt-ci-cd/.github/workflows/standard-semver.yaml@main
