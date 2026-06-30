@@ -23,7 +23,7 @@ find_package(rclcpp_action)
 find_package(ros2_j1939_babbler_msgs REQUIRED)
 
 # Build third party libraries
-add_subdirectory(third-party)
+add_subdirectory(third-party SYSTEM)
 
 ament_auto_find_build_dependencies()
 
@@ -41,6 +41,9 @@ target_link_libraries(${PROJECT_NAME}
         ${ros2_j1939_babbler_msgs_LIBRARIES}
         mireo_can_utils
 )
+
+# Mark mireo directories as system so compiler shuts up about warnings in them
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE $<TARGET_PROPERTY:mireo_can_utils,INTERFACE_INCLUDE_DIRECTORIES>)
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-function)
 
