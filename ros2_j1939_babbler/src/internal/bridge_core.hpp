@@ -27,10 +27,6 @@
 #include "can_msgs/msg/frame.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 
-#include "can_dbc_parser/Dbc.hpp"
-#include "can_dbc_parser/DbcBuilder.hpp"
-#include "can_dbc_parser/DbcMessage.hpp"
-
 #include <regex>
 #include <sstream>
 #include <utility>

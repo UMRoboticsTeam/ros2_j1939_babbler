@@ -16,7 +16,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # find dependencies
 find_package(ament_cmake_auto REQUIRED)
-find_package(can_dbc_parser REQUIRED)
 find_package(ros_babel_fish)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)

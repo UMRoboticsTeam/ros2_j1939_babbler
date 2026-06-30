@@ -19,8 +19,6 @@
   <depend>sensor_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>libstatistics-collector</depend>
-
-  <depend>can_dbc_parser</depend>
   <depend>ros_babel_fish</depend>
 
   <depend>ros2_j1939_babbler_msgs</depend>
