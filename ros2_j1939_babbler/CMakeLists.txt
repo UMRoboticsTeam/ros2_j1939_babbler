@@ -16,11 +16,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # find dependencies
 find_package(ament_cmake_auto REQUIRED)
-find_package(ros_babel_fish)
+find_package(ros_babel_fish REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(rclcpp_action)
+find_package(rclcpp_action REQUIRED)
 find_package(ros2_j1939_babbler_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # Build third party libraries
 add_subdirectory(third-party SYSTEM)
