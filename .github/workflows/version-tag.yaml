@@ -3,7 +3,7 @@ name: Assert version is incremented
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   tag-version:
