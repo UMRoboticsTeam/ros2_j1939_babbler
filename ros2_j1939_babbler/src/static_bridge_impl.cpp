@@ -28,7 +28,7 @@ namespace ros2_j1939_babbler {
     void StaticBridge::Impl::on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
         RCLCPP_DEBUG(
                 node_->get_logger(), "New message; is_rtr:%d is_error:%d id:%d, sa:%d", message->is_rtr, message->is_error,
-                message->id, message->id & 0x000000FFu
+                message->id, message->id & SOURCE_ADDR_MASK
         );
         // If message is a request frame or error frame, we ignore it
         // Note that in intersection with the parameter-specified filters, we also filter by messages in the DBC, so if the

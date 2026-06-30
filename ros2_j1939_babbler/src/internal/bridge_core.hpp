@@ -34,6 +34,8 @@
 constexpr inline uint32_t PGN_MASK = 0x03FFFF00u;
 constexpr inline uint32_t PF_MASK = 0x00FF0000u;
 constexpr inline uint32_t PS_MASK = 0x0000FF00u;
+constexpr inline uint32_t PF_SHIFT = 16;
+constexpr inline uint32_t PS_SHIFT = 8;
 constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
 constexpr inline uint32_t PDU2_PF_BOUNDARY = 0xF0;  // Messages with PF >= this are PDU2
@@ -119,9 +121,9 @@ namespace ros2_j1939_babbler {
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
 
-            uint8_t pf = id & PF_MASK;
+            uint8_t pf = (id & PF_MASK) >> PF_SHIFT;
             bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
-            bool addressed_to_us = is_pdu2 || (id & PF_MASK) == device_ID_;
+            bool addressed_to_us = is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_ID_;
             if (!addressed_to_us) { return false; }
 
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
