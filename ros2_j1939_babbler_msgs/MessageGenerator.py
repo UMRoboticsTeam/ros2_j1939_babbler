@@ -31,9 +31,22 @@ MESSAGE_NAME_MASK = re.compile('[^A-Za-z0-9]')
 FIELD_NAME_MASK = re.compile('[^a-z0-9_]')
 PGN_MASK = 0x03FFFF00
 
-PASCAL_TO_SNAKE_CASE_CONVERTER = re.compile(r'(?<!^)(?=[A-Z])')
 
+def ros_header_name_formatter(message_name: str):
+    """
+    Re-implementation of how ROS generates the name:
+    https://github.com/ros2/rosidl/blob/humble/rosidl_cmake/cmake/string_camel_case_to_lower_case_underscore.cmake
+    """
+    # Insert an underscore before any uppercase letter
+    # which is followed by lowercase letters.
+    header_name = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", message_name)
 
+    # Insert an underscore before any uppercase letter
+    # which is preceded by a lowercase letter or digit.
+    header_name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", header_name)
+
+    return header_name.lower()
+    
 def convert_files(db: cantools.database.Database, msg_output_dir: str, type_conversion_output: str, database_name: str):
     print(f"Exporting msg files to '{msg_output_dir}'")
     os.makedirs(msg_output_dir, exist_ok=True)  # Make the output directory if it doesn't exist
@@ -250,7 +263,8 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
             unpack_function_name = f"{database_name}_{CodeGenMessage(message).snake_name}_unpack"  # Also distilled
             pgn = message.frame_id & PGN_MASK
 
-            include_statements += INCLUDE_ROS_MESSAGE_HEADER_TEMPLATE.format(header_formatted_name = PASCAL_TO_SNAKE_CASE_CONVERTER.sub('_', ros_msg_type_name).lower())
+            include_statements += INCLUDE_ROS_MESSAGE_HEADER_TEMPLATE.format(
+                header_formatted_name=ros_header_name_formatter(ros_msg_type_name))
 
             ros_to_can_signal_mappings = ""
             can_to_ros_signal_mappings = ""
