@@ -19,6 +19,9 @@
 
 #include "can/can_codec.h"
 
+#include <fstream>
+#include <sstream>
+
 namespace {
     enum class IntegerLengths;
 
