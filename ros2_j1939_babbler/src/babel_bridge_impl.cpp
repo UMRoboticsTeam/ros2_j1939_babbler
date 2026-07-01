@@ -15,9 +15,10 @@
  * limitations under the License.
  */
 
-#include "internal/babel_bridge_impl.hpp"
-
+// Must come first because of kernel-aligned asm-generic/types.h shenanigans
 #include "can/can_codec.h"
+
+#include "internal/babel_bridge_impl.hpp"
 
 #include <fstream>
 #include <sstream>

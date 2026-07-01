@@ -18,9 +18,11 @@
 #ifndef ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 #define ROS2_J1939_BABBLER__INTERNAL__BABEL_BRIDGE_IMPL_
 
+// Must come first because of kernel-aligned asm-generic/types.h shenanigans
+#include "v2c/v2c_transcoder.h"
+
 #include "bridge_core.hpp"
 #include "ros2_j1939_babbler/babel_bridge.hpp"
-#include "v2c/v2c_transcoder.h"
 
 #include <rclcpp/rclcpp.hpp>
 #include <ros_babel_fish/babel_fish.hpp>

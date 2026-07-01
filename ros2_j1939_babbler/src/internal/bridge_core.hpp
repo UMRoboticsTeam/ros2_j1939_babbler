@@ -18,17 +18,16 @@
 #ifndef ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
 #define ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
 
-#include <memory>
-#include <string>
-
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
 #include "can_msgs/msg/frame.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 
+#include <memory>
 #include <regex>
 #include <sstream>
+#include <string>
 #include <utility>
 
 constexpr inline uint32_t PGN_MASK = 0x03FFFF00u;
