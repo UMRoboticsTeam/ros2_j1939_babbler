@@ -69,6 +69,7 @@ namespace ros2_j1939_babbler {
             };
             msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_ids", { 0 }, msg_filter_range);
             msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_masks", { 0 }, msg_filter_range);
+            promiscuous_ = node_->declare_parameter<bool>("promiscuous", false);
 
             if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
                 throw std::invalid_argument((std::ostringstream{}
@@ -86,6 +87,7 @@ namespace ros2_j1939_babbler {
             RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
             RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
             RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
+            RCLCPP_INFO(node->get_logger(), "promiscuous: %s", promiscuous_ ? "true", "false");
 
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
                     this->can_sub_topic_, 500,
@@ -94,7 +96,7 @@ namespace ros2_j1939_babbler {
             this->pub_can_ =
                     node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
 
-            RCLCPP_DEBUG(node_->get_logger(), "Generic Can Driver Core configured!");
+            RCLCPP_DEBUG(node_->get_logger(), "Bridge core configured!");
         }
 
         /**
@@ -119,6 +121,8 @@ namespace ros2_j1939_babbler {
         */
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
+
+            if (promiscuous_) { return true; }
 
             uint8_t pf = (id & PF_MASK) >> PF_SHIFT;
             bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
@@ -146,6 +150,7 @@ namespace ros2_j1939_babbler {
         std::string msg_topic_prefix_;          // Prefix to add to the topic name for each CAN message
         std::vector<int64_t> msg_filter_ids_;   // List of ids messages must match (within a mask) to be processed
         std::vector<int64_t> msg_filter_masks_; // Parallel list of masks to apply to the filter ids
+        bool promiscuous_;                      // Ignore whether messages are addressed to us
 
         std::shared_ptr<rclcpp::Subscription<can_msgs::msg::Frame>> sub_can_; // ROS subscriber to sub_topic_can_
         std::shared_ptr<rclcpp::Publisher<can_msgs::msg::Frame>> pub_can_;    // ROS publisher to pub_topic_can_

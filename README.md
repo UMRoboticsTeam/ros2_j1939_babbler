@@ -50,6 +50,7 @@ Both nodes are offered as components if you desire to run them as part of a comp
 | msg_topic_prefix | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
 | msg_filter_ids   | int64 array | List of message IDs to match before processing                                                             | {0}     | &check;      | &check;       |
 | msg_filter_masks | int64 array | List of ID masks to control matching, each associated with the ID at the same index in `msg_filter_ids`    | {0}     | &check;      | &check;       |
+| promiscuous      | boolean     | Make the bridge process messages regardless of if they are addressed to it                                 | false   | &check;      | &check;       |
 
 Note that the default ID/mask pair functions as an all-pass filter.
 
