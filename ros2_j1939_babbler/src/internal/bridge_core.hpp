@@ -87,7 +87,7 @@ namespace ros2_j1939_babbler {
             RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
             RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
             RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
-            RCLCPP_INFO(node->get_logger(), "promiscuous: %s", promiscuous_ ? "true", "false");
+            RCLCPP_INFO(node_->get_logger(), "promiscuous: %s", promiscuous_ ? "true", "false");
 
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
                     this->can_sub_topic_, 500,
