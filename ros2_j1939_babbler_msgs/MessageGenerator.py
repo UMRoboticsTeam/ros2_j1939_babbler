@@ -88,6 +88,11 @@ def compute_dtype(signal: cantools.database.Signal) -> str:
         dtype = f"int{ceil_bits(signal.length)}"
     else:  # Finally, if it isn't an enum, float, or signed int, it must be a uint
         dtype = f"uint{ceil_bits(signal.length)}"
+        
+    # Kind of sketchy, but if scale is less than 1 then we always use a double to represent
+    if signal.conversion.scale < 1:
+        dtype = f"float{ceil_bits(max(32, signal.length))}"
+        
     return dtype
 
 HEADER_TEMPLATE = """/*
