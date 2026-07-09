@@ -120,11 +120,9 @@ namespace ros2_j1939_babbler {
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
 
-            if (promiscuous_) { return true; }
-
             uint8_t pf = (id & PF_MASK) >> PF_SHIFT;
             bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
-            bool addressed_to_us = is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_id_;
+            bool addressed_to_us = promiscuous_ || is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_id_;
             if (!addressed_to_us) { return false; }
 
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
