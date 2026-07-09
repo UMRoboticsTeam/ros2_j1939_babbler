@@ -175,15 +175,16 @@ namespace ros2_j1939_babbler_msgs
     * @tparam PGN J1939 PGN of the message type to transcode
     * @param publisher ROS publisher instance to publish with
     * @param ros_msg ROS message instance to transcode
+    * @param source_address J1939 source address to publish with
     */
     template<uint32_t PGN>
-    void buildAndPublishCan(rclcpp::Publisher<can_msgs::msg::Frame>& publisher, const typename pgn_ros_message_type_map<PGN>::type& ros_msg)
+    void buildAndPublishCan(rclcpp::Publisher<can_msgs::msg::Frame>& publisher, const typename pgn_ros_message_type_map<PGN>::type& ros_msg, const uint8_t source_address)
     {
       	using C_CAN_MSG_TYPE =  typename pgn_can_message_type_map<PGN>::type;
         using ROS_MSG_TYPE = typename pgn_ros_message_type_map<PGN>::type;
         auto ros_can_msg = std::make_unique<can_msgs::msg::Frame>();
         ros_can_msg->header = std::move(ros_msg.header);
-        ros_can_msg->id = PGN | ros_msg.src_addr;
+        ros_can_msg->id = PGN | source_address;
         ros_can_msg->is_extended = true;
         ros_can_msg->is_error = false;
         ros_can_msg->is_rtr = false;
@@ -228,12 +229,14 @@ namespace ros2_j1939_babbler_msgs
         /**
          * Construct an instance of the dispatch table, creating all the ROS publishers needed to dispatch messages.
          * @param node pointer to the ROS node to create publishers under
+         * @param device_id source address to use for published J1939 messages
          * @param topic_prefix string to prepend to all message topic names, not including the '/' between
          * @param transmitter_topic topic to publish CAN messages to, will not have topic_prefix prepended
          * @param qos_history_depth history depth to create publishers with
          */
-        DispatchTable_T(rclcpp::Node* node, const std::string& topic_prefix, const std::string& transmitter_topic, const size_t qos_history_depth)
-            : publishers_{createPublishers(node, topic_prefix, qos_history_depth)},
+        DispatchTable_T(rclcpp::Node* node,  const uint8_t device_id, const std::string& topic_prefix, const std::string& transmitter_topic, const size_t qos_history_depth)
+            : device_id_{device_id},
+              publishers_{createPublishers(node, topic_prefix, qos_history_depth)},
               can_publisher_{createTransmitter(node, transmitter_topic, qos_history_depth)}
         {
           subscribers_ = createSubscribers(node, topic_prefix, qos_history_depth);
@@ -282,6 +285,11 @@ namespace ros2_j1939_babbler_msgs
          */
         using publisher_storage_t = std::tuple<std::shared_ptr<rclcpp::Publisher<typename pgn_ros_message_type_map<PGNs>::type>>...>;
         using subscriber_storage_t = std::tuple<std::shared_ptr<rclcpp::Subscription<typename pgn_ros_message_type_map<PGNs>::type>>...>;
+
+        /**
+         * Source address to publish with.
+         */
+        uint8_t device_id_;
 
         /**
          * Instance of n-tuple storing all the different ROS publishers.
@@ -340,7 +348,7 @@ namespace ros2_j1939_babbler_msgs
             return node->create_subscription<MSG_TYPE>(
                 (std::ostringstream() << topic_prefix << '/' << message_type_name_map<MSG_TYPE>::name << "/tx").str(),
                 qos_history_depth,
-                [this](const MSG_TYPE& msg) { buildAndPublishCan<PGN>(*this->can_publisher_, msg);}
+                [this](const MSG_TYPE& msg) { buildAndPublishCan<PGN>(*this->can_publisher_, msg, device_id_);}
             );
         }
 

@@ -46,6 +46,7 @@ namespace ros2_j1939_babbler {
     void StaticBridge::Impl::configurePublishers(const std::string& msg_topic_prefix, const std::string& transmitter_topic) {
         this->publisher_dispatch_table_ = std::make_unique<ros2_j1939_babbler_msgs::DispatchTable>(
                 node_,
+                device_id_,
                 (std::ostringstream{} << msg_topic_prefix
                                       << (!msg_topic_prefix.empty() && msg_topic_prefix.back() == '/' ? "" : "/")
                                       << sensor_name_)

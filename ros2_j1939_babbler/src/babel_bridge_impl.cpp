@@ -132,7 +132,7 @@ namespace ros2_j1939_babbler {
         auto can_message = std::make_unique<can_msgs::msg::Frame>();
         can_message->header.stamp = node_->now();
         can_message->header.frame_id = sensor_name_;
-        can_message->id = pgn | device_ID_;
+        can_message->id = pgn | device_id_;
         can_message->dlc = message_definition.dlc;
 
         for (const auto& signal_info : message_definition.signals | std::views::values) {

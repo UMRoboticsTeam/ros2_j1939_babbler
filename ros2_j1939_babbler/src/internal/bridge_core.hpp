@@ -59,7 +59,7 @@ namespace ros2_j1939_babbler {
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
             frame_id_ = node_->declare_parameter<std::string>("frame_id", "");
             sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "");
-            device_ID_ = node_->declare_parameter<uint8_t>("device_ID", 0);
+            device_id_ = node_->declare_parameter<uint8_t>("device_ID", 0);
             can_sub_topic_ = node_->declare_parameter<std::string>("can_sub_topic", "/from_can_bus");
             can_pub_topic_ = node_->declare_parameter<std::string>("can_pub_topic", "/to_can_bus");
             msg_topic_prefix_ = node_->declare_parameter<std::string>("msg_topic_prefix", "");
@@ -79,12 +79,10 @@ namespace ros2_j1939_babbler {
                                                     .str());
             }
 
-            device_ID_str_ = std::to_string(device_ID_);
-
             RCLCPP_INFO(node_->get_logger(), "dbw_dbc_file: %s", dbw_dbc_file_.c_str());
             RCLCPP_INFO(node_->get_logger(), "frame_id: %s", frame_id_.c_str());
             RCLCPP_INFO(node_->get_logger(), "sensor_name: %s", sensor_name_.c_str());
-            RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
+            RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_id_);
             RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
             RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
             RCLCPP_INFO(node_->get_logger(), "promiscuous: %s", promiscuous_ ? "true" : "false");
@@ -126,7 +124,7 @@ namespace ros2_j1939_babbler {
 
             uint8_t pf = (id & PF_MASK) >> PF_SHIFT;
             bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
-            bool addressed_to_us = is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_ID_;
+            bool addressed_to_us = is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_id_;
             if (!addressed_to_us) { return false; }
 
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
@@ -143,8 +141,7 @@ namespace ros2_j1939_babbler {
         std::string dbw_dbc_file_; // The messages definition (such as J1939 standard)
         std::string frame_id_;     // Used on the published messages - usually just the location of the sensor on your robot
         std::string sensor_name_;  // Name of your sensor / device (e.g. engine ECU)
-        uint8_t device_ID_; // J1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
-        std::string device_ID_str_;             // String representation of device_ID_
+        uint8_t device_id_;        // J1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
         std::string can_sub_topic_;             // Topic to listen for ros2_socketcan messages on
         std::string can_pub_topic_;             // Topic to send outgoing ros2_socketcan messages on
         std::string msg_topic_prefix_;          // Prefix to add to the topic name for each CAN message
