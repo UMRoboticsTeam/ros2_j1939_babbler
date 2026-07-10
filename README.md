@@ -21,6 +21,11 @@ An example of the generated header is shown below. The templates to complete the
 As templates are extensively used as part of the compile-time implementation, the PIMPL technique is used to prevent
 implementation details from leaking into public headers.
 
+## Non-ROS Build Dependencies
+- Python and cantools package
+- If compiling the Babel Bridge, You must have the Boost Fusion and Spirit headers available
+  - These are header only libraries, so are not required at runtime
+
 
 ## How to Use
 1. Replace `ros2_J1939_babbler_msgs/Messages.dbc` with your own DBC file, or alternatively set the CMake variable `DBC_PATH`
@@ -31,12 +36,12 @@ implementation details from leaking into public headers.
 4. If you wish to use the static_bridge, recompile and install the ros2_j1939_babbler package, and run the static_bridge node
    - e.g. `ros2 run ros2_j1939_babbler static_bridge --ros-args -p dbw_dbc_file:=./ros2_j1939_babbler_msgs/Messages.dbc -p msg_package:=ros2_j1939_babbler_msgs ...and so on`
 
-Both nodes are offered as components if you desire to run them as part of a composable node container. 
+Both nodes are offered as components if you desire to run them as part of a composable node container.
 
 ## ROS Parameters
 | Parameter        | Type        | Description                                                                                                | Default | babel_bridge | static_bridge |
 |------------------|-------------|------------------------------------------------------------------------------------------------------------|---------|--------------|---------------|
-| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &check;       |
+| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &cross;       |
 | msg_package      | string      | ROS package to load message definitions from                                                               | empty   | &check;      | &cross;       |
 | frame_id         | string      | TF2 frame designator                                                                                       | empty   | &check;      | &check;       |
 | sensor_name      | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
@@ -45,16 +50,17 @@ Both nodes are offered as components if you desire to run them as part of a comp
 | msg_topic_prefix | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
 | msg_filter_ids   | int64 array | List of message IDs to match before processing                                                             | {0}     | &check;      | &check;       |
 | msg_filter_masks | int64 array | List of ID masks to control matching, each associated with the ID at the same index in `msg_filter_ids`    | {0}     | &check;      | &check;       |
+| promiscuous      | boolean     | Make the bridge process messages regardless of if they are addressed to it                                 | false   | &check;      | &check;       |
 
 Note that the default ID/mask pair functions as an all-pass filter.
 
 
 ## Future Work
-- Implement other direction: converting ROS messages to J1939 messages 
 - Eliminate/clarify overlap between `sensor_name` and `msg_topic_prefix` parameters
 - Replace `can_dbc_parser` with a compile-time mapping in static bridge
   - Ideally supports enums as well
 - Extend to support plain CAN messages
+- Extend to support multiplexed messages
 - Fix address claim sequence
 - J1939 TP message support
 - Clean up remaining ros2_j1939 code

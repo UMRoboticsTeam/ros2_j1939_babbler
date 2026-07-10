@@ -1,7 +1,6 @@
 /*
- * Copyright 2024 Construction Engineering Research Laboratory (CERL)
- * Engineer Reseach and Development Center (ERDC)
- * U.S. Army Corps of Engineers
+ * Copyright 2026 University of Manitoba Robotics Team
+ * Noah Reeder
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/*
- * Modified by Noah Reeder on 2026-05-07
- * Modifications Copyright 2026 Noah Reeder, University of Manitoba Robotics Team.
- */
 
 #ifndef ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
 #define ROS2_J1939_BABBLER__INTERNAL__BRIDGE_CORE_
-
-#include <memory>
-#include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -32,19 +24,20 @@
 #include "can_msgs/msg/frame.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 
-#include "can_dbc_parser/Dbc.hpp"
-#include "can_dbc_parser/DbcBuilder.hpp"
-#include "can_dbc_parser/DbcMessage.hpp"
-
+#include <memory>
 #include <regex>
 #include <sstream>
+#include <string>
 #include <utility>
 
-constexpr inline uint32_t PFPS_MASK = 0x00FFFF00u; // Note doesn't include data page, NewEagle limitation?
+constexpr inline uint32_t PGN_MASK = 0x03FFFF00u;
+constexpr inline uint32_t PF_MASK = 0x00FF0000u;
+constexpr inline uint32_t PS_MASK = 0x0000FF00u;
+constexpr inline uint32_t PF_SHIFT = 16;
+constexpr inline uint32_t PS_SHIFT = 8;
 constexpr inline uint32_t SOURCE_ADDR_MASK = 0x000000FFu;
 constexpr inline uint32_t MAX_CAN_ID = 0x1FFFFFFFu; // 29-bits
-
-using namespace std::chrono_literals;
+constexpr inline uint32_t PDU2_PF_BOUNDARY = 0xF0;  // Messages with PF >= this are PDU2
 
 namespace ros2_j1939_babbler {
     /**
@@ -66,9 +59,9 @@ namespace ros2_j1939_babbler {
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
             frame_id_ = node_->declare_parameter<std::string>("frame_id", "");
             sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "");
-            device_ID_ = node_->declare_parameter<uint8_t>("device_ID", 0);
-            sub_topic_can_ = node_->declare_parameter<std::string>("can_sub_topic", "");
-            //pub_topic_can_ = node_->declare_parameter<std::string>("pub_topic_can", ""); TODO: Implement ROS-to-J1939
+            device_id_ = node_->declare_parameter<uint8_t>("device_ID", 0);
+            can_sub_topic_ = node_->declare_parameter<std::string>("can_sub_topic", "/from_can_bus");
+            can_pub_topic_ = node_->declare_parameter<std::string>("can_pub_topic", "/to_can_bus");
             msg_topic_prefix_ = node_->declare_parameter<std::string>("msg_topic_prefix", "");
             auto msg_filter_range = rcl_interfaces::msg::ParameterDescriptor{};
             msg_filter_range.integer_range = {
@@ -76,35 +69,32 @@ namespace ros2_j1939_babbler {
             };
             msg_filter_ids_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_ids", { 0 }, msg_filter_range);
             msg_filter_masks_ = node_->declare_parameter<std::vector<int64_t>>("msg_filter_masks", { 0 }, msg_filter_range);
+            promiscuous_ = node_->declare_parameter<bool>("promiscuous", false);
 
             if (msg_filter_ids_.size() != msg_filter_masks_.size()) {
                 throw std::invalid_argument((std::ostringstream{}
-                    << "Message filter must have same number of IDs and masks, found "
-                    << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
-                    << " masks").str());
+                                             << "Message filter must have same number of IDs and masks, found "
+                                             << msg_filter_ids_.size() << " ids and " << msg_filter_masks_.size()
+                                             << " masks")
+                                                    .str());
             }
 
-            device_ID_str_ = std::to_string(device_ID_);
-
-            // printing to user
             RCLCPP_INFO(node_->get_logger(), "dbw_dbc_file: %s", dbw_dbc_file_.c_str());
             RCLCPP_INFO(node_->get_logger(), "frame_id: %s", frame_id_.c_str());
             RCLCPP_INFO(node_->get_logger(), "sensor_name: %s", sensor_name_.c_str());
-            RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_ID_);
-            RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", sub_topic_can_.c_str());
-            //RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", pub_topic_can_.c_str()); TODO: Implement ROS-to-J1939
+            RCLCPP_INFO(node_->get_logger(), "device_id: %d", device_id_);
+            RCLCPP_INFO(node_->get_logger(), "sub_topic_can: %s", can_sub_topic_.c_str());
+            RCLCPP_INFO(node_->get_logger(), "pub_topic_can: %s", can_pub_topic_.c_str());
+            RCLCPP_INFO(node_->get_logger(), "promiscuous: %s", promiscuous_ ? "true" : "false");
 
-            // setup dbc database - brings in j1939 standard
-            this->setupDatabase();
-            RCLCPP_INFO(node_->get_logger(), "Setup DBC database!");
-
-            // setup subscriber, bind rxFrame
             this->sub_can_ = node_->create_subscription<can_msgs::msg::Frame>(
-                    this->sub_topic_can_, 500,
-                    [this](const can_msgs::msg::Frame::SharedPtr msg) { rxFrame(std::forward<decltype(msg)>(msg)); }
+                    this->can_sub_topic_, 500,
+                    [this](std::unique_ptr<can_msgs::msg::Frame> message) { on_can_to_ros(std::move(message)); }
             );
+            this->pub_can_ =
+                    node_->create_publisher<can_msgs::msg::Frame>(this->can_pub_topic_, 500, rclcpp::PublisherOptions{});
 
-            RCLCPP_DEBUG(node_->get_logger(), "Generic Can Driver Core configured!");
+            RCLCPP_DEBUG(node_->get_logger(), "Bridge core configured!");
         }
 
         /**
@@ -114,93 +104,31 @@ namespace ros2_j1939_babbler {
 
     protected:
         /**
-         * @brief Different lengths of integers which are available for use in ROS messages.
-         */
-        enum class IntegerLengths { b8, b16, b32, b64 };
-
-        /**
-         * @brief Strips characters other than [A-Za-z0-9].
-         * @return the modified string
-         */
-        static std::string dbc_message_name_to_ros(const std::string& dbc_message_name) {
-            std::string result;
-            result.reserve(dbc_message_name.size());
-            std::copy_if(
-                    dbc_message_name.begin(), dbc_message_name.end(), std::back_inserter(result),
-                    [](const unsigned char& c) { return std::isalnum(c); }
-            );
-            return result;
-        }
-
-        /**
-         * @brief Brings characters to lowercase and strips other than [a-z0-9_]
-         * @return
-         */
-        static std::string dbc_signal_name_to_ros(const std::string& dbc_signal_name) {
-            // Sincce basically the same requirements as dbc_message_name_to_ros, use that and then change all uppercase to lowercase
-            std::string result;
-            result.reserve(dbc_signal_name.size());
-            std::copy_if(
-                    dbc_signal_name.begin(), dbc_signal_name.end(), std::back_inserter(result),
-                    [](const unsigned char& c) { return std::isalnum(c) || c == '_'; }
-            );
-            std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char& c) {
-                return std::tolower(c);
-            });
-            return result;
-        }
-
-        /**
-         * @brief Determines the ROS integer type needed to hold an integer of a certain bit length.
-         * @param bit_length the number of bits the integer to store is composed of
-         */
-        static IntegerLengths ceil_bits(const uint8_t bit_length) {
-            if (bit_length <= 8) { return IntegerLengths::b8; }
-            if (bit_length <= 16) { return IntegerLengths::b16; }
-            if (bit_length <= 32) { return IntegerLengths::b32; }
-            if (bit_length <= 64) { return IntegerLengths::b64; }
-            throw std::invalid_argument("Signals with length greater than 64 bits are not supported");
-        }
-
-        /**
          * @brief Handle an incoming CAN frame.
          *
          * Uses the derived implementation's message handler to handle the message.
          *
          * @param MSG CAN message to handle
          */
-        void rxFrame(const can_msgs::msg::Frame::SharedPtr& MSG) { static_cast<T*>(this)->rxFrame(MSG); }
-
-        // DATABASE MANAGEMENT FUNCTIONS //
-        /**
-         * @brief Instantiates a NewEagle dbc database object using the dbc file specified in params.
-         * Strips the priority and source address id from the message ID in the DBC.
-         * These stripped IDs are stored as keys in a map with the NewEagle DBC messages as values.
-         */
-        void setupDatabase() {
-            // build the new eagle dbc database
-            this->dbw_dbc_db_ = NewEagle::DbcBuilder().NewDbc(dbw_dbc_file_);
-            this->dbc_name_msg_map_ = *this->dbw_dbc_db_.GetMessages();
-            // for every message in the database, leave only PGN
-            for (auto [key, value] : dbc_name_msg_map_) {
-                // strip id of priority and source address info
-                uint32_t stripped_id = value.GetId() & 0x00FFFF00u;
-                dbc_id_msg_map_[stripped_id] = value;
-                RCLCPP_DEBUG(
-                        node_->get_logger(), "Accepting messages with stripped ID:%d from raw ID:%d", stripped_id,
-                        value.GetId()
-                );
-            }
+        void on_can_to_ros(std::unique_ptr<can_msgs::msg::Frame> message) {
+            static_cast<T*>(this)->on_can_to_ros(std::move(message));
         }
 
         /**
-         * @brief check if an incoming message passes the message filters
-         */
+        * @brief check if an incoming message passes the message filters
+        */
         [[nodiscard]] bool filter(const uint32_t id) const {
             bool pass = false;
+
+            uint8_t pf = (id & PF_MASK) >> PF_SHIFT;
+            bool is_pdu2 = pf >= PDU2_PF_BOUNDARY;
+            bool addressed_to_us = promiscuous_ || is_pdu2 || ((id & PS_MASK) >> PS_SHIFT) == device_id_;
+            if (!addressed_to_us) { return false; }
+
             for (std::size_t i = 0; i < msg_filter_ids_.size() && !pass; ++i) {
                 pass = (id & msg_filter_masks_[i]) == (msg_filter_ids_[i] & msg_filter_masks_[i]);
             }
+
             return pass;
         }
 
@@ -211,18 +139,16 @@ namespace ros2_j1939_babbler {
         std::string dbw_dbc_file_; // The messages definition (such as J1939 standard)
         std::string frame_id_;     // Used on the published messages - usually just the location of the sensor on your robot
         std::string sensor_name_;  // Name of your sensor / device (e.g. engine ECU)
-        uint8_t device_ID_; // J1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
-        std::string device_ID_str_; // String representation of device_ID_
-        std::string sub_topic_can_; // Topic to listen for ros2_socketcan messages on
-        //std::string pub_topic_can_; // publish to the topic socket_can is sending to the CAN line TODO: Implement ROS-to-J1939
+        uint8_t device_id_;        // J1939 source address of your device, in decimal format (last 2 hex numbers of the CANID)
+        std::string can_sub_topic_;             // Topic to listen for ros2_socketcan messages on
+        std::string can_pub_topic_;             // Topic to send outgoing ros2_socketcan messages on
         std::string msg_topic_prefix_;          // Prefix to add to the topic name for each CAN message
         std::vector<int64_t> msg_filter_ids_;   // List of ids messages must match (within a mask) to be processed
         std::vector<int64_t> msg_filter_masks_; // Parallel list of masks to apply to the filter ids
+        bool promiscuous_;                      // Ignore whether messages are addressed to us
 
-        NewEagle::Dbc dbw_dbc_db_;                                      // new eagle dbc database
-        std::map<uint32_t, NewEagle::DbcMessage> dbc_id_msg_map_;       // Map of message IDs to C++ message objects
-        std::map<std::string, NewEagle::DbcMessage> dbc_name_msg_map_;  // Map of message names to C++ message objects
-        rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr sub_can_; // ROS subscriber to sub_topic_can_
+        std::shared_ptr<rclcpp::Subscription<can_msgs::msg::Frame>> sub_can_; // ROS subscriber to sub_topic_can_
+        std::shared_ptr<rclcpp::Publisher<can_msgs::msg::Frame>> pub_can_;    // ROS publisher to pub_topic_can_
     };
 } // namespace ros2_j1939_babbler
 

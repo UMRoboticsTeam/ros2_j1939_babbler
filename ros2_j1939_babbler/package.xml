@@ -2,9 +2,9 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>ros2_j1939_babbler</name>
-  <version>0.1.0</version>
-  <description>Generic Reference CAN-interfacing package</description>
-  <maintainer email="arturo.saucedo@erdc.dren.mil">Arturo Saucedo</maintainer>
+  <version>0.2.0</version>
+  <description>Translation bridge between ROS and J1939 messages with support for runtime type deduction</description>
+  <maintainer email="noahreederatc@gmail.com">Noah Reeder</maintainer>
   <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
@@ -12,14 +12,15 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>rclcpp_lifecycle</depend>
+  <depend>rclcpp_action</depend>
   <depend>lifecycle_msgs</depend>
   <depend>can_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>builtin_interfaces</depend>
   <depend>diagnostic_msgs</depend>
-
-  <depend>can_dbc_parser</depend>
+  <depend>libstatistics-collector</depend>
   <depend>ros_babel_fish</depend>
 
   <depend>ros2_j1939_babbler_msgs</depend>
