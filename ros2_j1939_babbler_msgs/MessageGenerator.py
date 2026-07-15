@@ -206,7 +206,7 @@ POPULATE_ROS_TEMPLATE = \
 
 POPULATE_ROS_SIGNAL_MAPPING_TEMPLATE = \
 """
-        ros_msg.{ros_field_name} = can_msg.{can_signal_name};"""
+        ros_msg.{ros_field_name} = (static_cast<decltype(ros_msg.{ros_field_name})>(can_msg.{can_signal_name}) * {scale}) + {offset};"""
 
 POPULATE_CAN_TEMPLATE = \
 """
@@ -218,7 +218,7 @@ POPULATE_CAN_TEMPLATE = \
 
 POPULATE_CAN_SIGNAL_MAPPING_TEMPLATE = \
 """
-        can_msg.{can_signal_name} = ros_msg.{ros_field_name};"""
+        can_msg.{can_signal_name} = static_cast<decltype(can_msg.{can_signal_name})>((ros_msg.{ros_field_name} - {offset}) / {scale});"""
 
 MESSAGE_TYPE_MAPPING_TEMPLATE = \
 """
@@ -281,13 +281,18 @@ def generate_type_conversions(messages: list[cantools.database.Message], type_co
                 else: dtype = f"std::{dtype}_t"
 
                 ros_field_name = FIELD_NAME_MASK.sub('', signal.name.lower())
-                can_signal_name = CodeGenSignal(signal).snake_name  # Distilled from c_source.py
+                signal_info = CodeGenSignal(signal)
+                can_signal_name = signal_info.snake_name  # Distilled from c_source.py
 
                 can_to_ros_signal_mappings += POPULATE_ROS_SIGNAL_MAPPING_TEMPLATE.format(ros_field_name = ros_field_name,
                                                                                           dtype = dtype,
-                                                                                          can_signal_name = can_signal_name)
+                                                                                          can_signal_name = can_signal_name,
+                                                                                          scale = signal_info.signal.conversion.scale,
+                                                                                          offset = signal_info.signal.conversion.offset)
                 ros_to_can_signal_mappings += POPULATE_CAN_SIGNAL_MAPPING_TEMPLATE.format(ros_field_name = ros_field_name,
-                                                                                          can_signal_name = can_signal_name)
+                                                                                          can_signal_name = can_signal_name,
+                                                                                          scale = signal_info.signal.conversion.scale,
+                                                                                          offset = signal_info.signal.conversion.offset)
 
             type_conversion_functions += POPULATE_ROS_TEMPLATE.format(can_msg_type_name = can_msg_type_name,
                                                                       ros_msg_type_name = ros_msg_type_name,
