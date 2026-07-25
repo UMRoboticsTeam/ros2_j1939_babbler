@@ -37,7 +37,7 @@ ament_auto_add_library(
         src/static_bridge_impl.cpp
 )
 
-ament_export_dependencies(can_dbc_parser ros2_j1939_babbler_msgs)
+ament_export_dependencies(ros2_j1939_babbler_msgs)
 
 target_link_libraries(${PROJECT_NAME}
         ${ros2_j1939_babbler_msgs_LIBRARIES}
