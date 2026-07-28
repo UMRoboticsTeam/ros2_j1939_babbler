@@ -7,4 +7,4 @@ on:
 
 jobs:
   tag-version:
-    uses: UMRoboticsTeam/umrt-ci-cd/.github/workflows/tag-version.yaml@main
+    uses: UMRoboticsTeam/umrt-ci-cd/.github/workflows/version-tag.yaml@main
