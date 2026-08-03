@@ -154,15 +154,18 @@ namespace ros2_j1939_babbler_msgs
         using ROS_MSG_TYPE = typename pgn_ros_message_type_map<PGN>::type;
         const uint8_t dlc = pgn_dlc_map<PGN>::value;
         auto ros_msg = std::make_unique<ROS_MSG_TYPE>();
-        ros_msg->header = std::move(can_msg->header);
-        ros_msg->src_addr = src_addr;
+
         if (can_msg->dlc != dlc) {
             throw std::out_of_range(
                 (std::ostringstream() << "Received CAN message with invalid length\n"
-                 << "Expected: " << dlc << "\n"
+                 << "Expected: " << static_cast<int>(dlc) << "\n"
                  << "Received message: " << can_msgs::msg::to_yaml(*can_msg)
                 ).str());
         }
+
+        ros_msg->header = std::move(can_msg->header);
+        ros_msg->src_addr = src_addr;
+
         C_CAN_MSG_TYPE c_can_msg;
         unpack_can_message<C_CAN_MSG_TYPE>(&c_can_msg, can_msg->data.data(), dlc);
         populateRos(*ros_msg, c_can_msg);
@@ -178,20 +181,20 @@ namespace ros2_j1939_babbler_msgs
     * @param source_address J1939 source address to publish with
     */
     template<uint32_t PGN>
-    void buildAndPublishCan(rclcpp::Publisher<can_msgs::msg::Frame>& publisher, const typename pgn_ros_message_type_map<PGN>::type& ros_msg, const uint8_t source_address)
+    void buildAndPublishCan(rclcpp::Publisher<can_msgs::msg::Frame>& publisher, std::unique_ptr<typename pgn_ros_message_type_map<PGN>::type> ros_msg, const uint8_t source_address)
     {
       	using C_CAN_MSG_TYPE =  typename pgn_can_message_type_map<PGN>::type;
         using ROS_MSG_TYPE = typename pgn_ros_message_type_map<PGN>::type;
         auto ros_can_msg = std::make_unique<can_msgs::msg::Frame>();
-        ros_can_msg->header = std::move(ros_msg.header);
         ros_can_msg->id = PGN | source_address;
         ros_can_msg->is_extended = true;
         ros_can_msg->is_error = false;
         ros_can_msg->is_rtr = false;
         ros_can_msg->dlc = pgn_dlc_map<PGN>::value;
         C_CAN_MSG_TYPE c_can_msg;
-        populateCan<C_CAN_MSG_TYPE, ROS_MSG_TYPE>(c_can_msg, ros_msg);
+        populateCan<C_CAN_MSG_TYPE, ROS_MSG_TYPE>(c_can_msg, *ros_msg);
         pack_can_message<C_CAN_MSG_TYPE>(ros_can_msg->data.data(), &c_can_msg, ros_can_msg->dlc);
+        ros_can_msg->header = std::move(ros_msg->header);
         publisher.publish(std::move(ros_can_msg));
     }
 
@@ -252,7 +255,7 @@ namespace ros2_j1939_babbler_msgs
         {
             // Fold expression will expand into a giant switch
             bool handled = ((pgn == PGNs ? (dispatch<PGNs>(std::move(can_msg), src_addr), true) : false) || ...);
-            (void*)handled; // May want to use this for logging or something in the future
+            (void)handled; // May want to use this for logging or something in the future
         }
 
         /*

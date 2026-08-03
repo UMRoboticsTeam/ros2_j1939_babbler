@@ -35,11 +35,10 @@ namespace ros2_j1939_babbler {
         //    message isn't in there we ignore and let others endpoints handle
         if (!message->is_rtr && !message->is_error && filter(message->id)) {
             const uint32_t pgn = message->id & PGN_MASK;
+            const uint8_t source_address = message->id & SOURCE_ADDR_MASK
             RCLCPP_DEBUG(node_->get_logger(), "Message passed filter");
 
-            publisher_dispatch_table_->runtime_dispatch(
-                    pgn, std::move(message), static_cast<uint8_t>(message->id & SOURCE_ADDR_MASK)
-            );
+            publisher_dispatch_table_->runtime_dispatch(pgn, std::move(message), source_address);
         }
     }
 
