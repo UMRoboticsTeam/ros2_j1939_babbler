@@ -58,7 +58,7 @@ namespace ros2_j1939_babbler {
 
             dbw_dbc_file_ = node_->declare_parameter<std::string>("dbw_dbc_file", "");
             frame_id_ = node_->declare_parameter<std::string>("frame_id", "");
-            sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "");
+            sensor_name_ = node_->declare_parameter<std::string>("sensor_name", "my_ecu");
             device_id_ = node_->declare_parameter<uint8_t>("device_ID", 0);
             can_sub_topic_ = node_->declare_parameter<std::string>("can_sub_topic", "/from_can_bus");
             can_pub_topic_ = node_->declare_parameter<std::string>("can_pub_topic", "/to_can_bus");

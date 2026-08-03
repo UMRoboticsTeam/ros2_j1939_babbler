@@ -39,18 +39,18 @@ implementation details from leaking into public headers.
 Both nodes are offered as components if you desire to run them as part of a composable node container.
 
 ## ROS Parameters
-| Parameter        | Type        | Description                                                                                                | Default | babel_bridge | static_bridge |
-|------------------|-------------|------------------------------------------------------------------------------------------------------------|---------|--------------|---------------|
-| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty   | &check;      | &cross;       |
-| msg_package      | string      | ROS package to load message definitions from                                                               | empty   | &check;      | &cross;       |
-| frame_id         | string      | TF2 frame designator                                                                                       | empty   | &check;      | &check;       |
-| sensor_name      | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
-| device_ID        | uint8       | Source address of this ECU, used to filter PDU1 messages                                                   | 0       | &check;      | &check;       |
-| can_sub_topic    | string      | [ros2_socketcan](https://github.com/autowarefoundation/ros2_socketcan) topic to listen for CAN messages on | empty   | &check;      | &check;       |
-| msg_topic_prefix | string      | Name of the ECU, to prefix topics with                                                                     | empty   | &check;      | &check;       |
-| msg_filter_ids   | int64 array | List of message IDs to match before processing                                                             | {0}     | &check;      | &check;       |
-| msg_filter_masks | int64 array | List of ID masks to control matching, each associated with the ID at the same index in `msg_filter_ids`    | {0}     | &check;      | &check;       |
-| promiscuous      | boolean     | Make the bridge process messages regardless of if they are addressed to it                                 | false   | &check;      | &check;       |
+| Parameter        | Type        | Description                                                                                                | Default  | babel_bridge | static_bridge |
+|------------------|-------------|------------------------------------------------------------------------------------------------------------|----------|--------------|---------------|
+| dbw_dbc_file     | string      | Path to the DBC file to use for decoding                                                                   | empty    | &check;      | &cross;       |
+| msg_package      | string      | ROS package to load message definitions from                                                               | empty    | &check;      | &cross;       |
+| frame_id         | string      | TF2 frame designator                                                                                       | empty    | &check;      | &check;       |
+| sensor_name      | string      | Name of the ECU, to prefix topics with                                                                     | "my_ecu" | &check;      | &check;       |
+| device_ID        | uint8       | Source address of this ECU, used to filter PDU1 messages                                                   | 0        | &check;      | &check;       |
+| can_sub_topic    | string      | [ros2_socketcan](https://github.com/autowarefoundation/ros2_socketcan) topic to listen for CAN messages on | empty    | &check;      | &check;       |
+| msg_topic_prefix | string      | Name of the ECU, to prefix topics with                                                                     | empty    | &check;      | &check;       |
+| msg_filter_ids   | int64 array | List of message IDs to match before processing                                                             | {0}      | &check;      | &check;       |
+| msg_filter_masks | int64 array | List of ID masks to control matching, each associated with the ID at the same index in `msg_filter_ids`    | {0}      | &check;      | &check;       |
+| promiscuous      | boolean     | Make the bridge process messages regardless of if they are addressed to it                                 | false    | &check;      | &check;       |
 
 Note that the default ID/mask pair functions as an all-pass filter.
 
