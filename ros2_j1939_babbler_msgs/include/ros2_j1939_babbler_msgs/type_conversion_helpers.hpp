@@ -351,7 +351,7 @@ namespace ros2_j1939_babbler_msgs
             return node->create_subscription<MSG_TYPE>(
                 (std::ostringstream() << topic_prefix << '/' << message_type_name_map<MSG_TYPE>::name << "/tx").str(),
                 qos_history_depth,
-                [this](const MSG_TYPE& msg) { buildAndPublishCan<PGN>(*this->can_publisher_, msg, device_id_);}
+                [this](std::unique_ptr<MSG_TYPE> msg) { buildAndPublishCan<PGN>(*this->can_publisher_, std::move(msg), device_id_);}
             );
         }
 
